@@ -1,5 +1,6 @@
 ####loading data and manipulating data
 #set working directory
+#this is just a comment
 setwd("C:/specify_your_path")
 
 #local (load)
