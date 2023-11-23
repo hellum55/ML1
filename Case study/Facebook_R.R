@@ -1,8 +1,6 @@
  # *******************************************
  #       Advertising on Facebook Source        
- #             Data source: Kaggle.com             
- #         Description in the .doc file 
- #          Ana Alina Tudoran, 2023
+ #             Data source: Kaggle.com        
  # *******************************************
   #install.packages('tidyverse')
   library(visdat)   # for visualizations
