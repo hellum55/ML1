@@ -1,8 +1,5 @@
 #########################################################
-# Course: Machine Learning for BI 1 
-# Lecture 2: Feature engineering application
-# Copyright: Ana Alina Tudoran
-# Aarhus University, Fall 2023
+# Course: Machine Learning
 #########################################################
 
 # Helper packages
