@@ -1,8 +1,5 @@
 ###############################################
-## Classification: LDA, QDA and KNN-classifier                  
-## Course: ML 1 for BI                
-## Lecturer: Ana Alina Tudoran
-## Oct 2023
+## Classification: LDA, QDA and KNN-classifier
 ###############################################
 
 library(DataExplorer) # for data exploration
