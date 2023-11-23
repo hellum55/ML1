@@ -1,7 +1,6 @@
 ######################################################
 # Principal Components Analysis (PCA)           
-# based on Chapter 10, Lab 1, ISL textbook 
-# Ana Alina Tudoran, 2023               
+# based on Chapter 10, Lab 1, ISL textbook               
 ######################################################
 
 
