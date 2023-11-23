@@ -35,7 +35,7 @@
   library(caTools) # for AUC
   
 
-  delays.df <- read.csv("~/Cloud/Documents/Alina Tudoran/TEACHING/Postgraduate/Machine Learning 2020-2021/ML1/2023/New lectures/4. Ch4_Classification/CASE STUDIES/BN_Flight delays/FlightDelays.csv")
+  delays.df <- read.csv("~/")
   str(delays.df)
   # first consider the 5 predictors mentioned in the background: 
   # DAY_WEEK , CRS_DEP_TIME, ORIGIN, DESTINATION and CARRIER
