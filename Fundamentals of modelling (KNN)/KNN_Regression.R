@@ -1,8 +1,5 @@
 #########################################################
-# Course: Machine Learning for BI 1 
-# Lecture 1: Fundamentals and KNN alg.
-# Copyright: Ana Alina Tudoran
-# Aarhus University, Fall 2023
+# Course: Machine Learning
 #########################################################
 
 # KNN regression - Application
