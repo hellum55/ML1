@@ -1,8 +1,5 @@
 ######################################################
-## Ordinary Linear regression in ML                  
-## Based on Hands on Machine Learning with R   
-## Course: ML 1 for BI                
-## Lecturer: Ana Alina Tudoran        
+## Ordinary Linear regression in ML                          
 ######################################################
 
 # _____________________________________________________________________________
