@@ -1,8 +1,6 @@
 ##############################################################
 ## Classification: Logistic regression                   
-## Modified script based on Hands on Machine Learning textbook    
-## Course: ML 1 for BI, 2023               
-## Lecturer: Ana Alina Tudoran        
+## Modified script based on Hands on Machine Learning textbook      
 ##############################################################
 
 # Helper packages
