@@ -1,3 +1,6 @@
+library(writexl)
+write_xlsx(pumpkin_data,"~/ML1/Exam2023\\pumpkintrain.xlsx")
+
 #Question a:####
 library(dplyr)
 pumpkin_data <- read.csv("~/ML1/Exam2023/US-pumpkins.csv", stringsAsFactors=TRUE)
@@ -36,7 +39,10 @@ pumpkin_data <- pumpkin_data %>%
   select(-c(Trans.Mode, Crop, Storage, Appearance, Condition, Quality, Environment, Grade, Sub.Variety, Unit.of.Sale, Origin.District, Type))
 
 #Checking for missing values again:
+library (Hmisc)
 plot_missing(pumpkin_data)
+str(pumpkin_data)
+pumpkin_data$Color <- impute(pumpkin_data$Color)
 #Two variables Mostly.High and Mostly.low have 5.86% missing values, which is ok in this case. But i will apply
 #knn-imputation because it looks like the prices are in some sort of range. The prices are integer and the
 #imputation should be so.
@@ -130,6 +136,7 @@ baked_train
 baked_test
 
 #Question k:####
+#First OLS -> KNN -> PCR -> PLS
 cv <- trainControl(
   method = "repeatedcv", 
   number = 10, 
@@ -138,21 +145,112 @@ cv <- trainControl(
 # Construct grid of hyperparameter values
 hyper_grid <- expand.grid(k = seq(2, 25, by = 1))
 
-# Tune a knn model using grid search
-pumpkin.knn <- train(
-  pumpkin_recipe, 
-  data = pumpkin_train, 
-  method = "knn", 
-  trControl = cv, 
-  #tuneGrid = hyper_grid,
+pumpkin.ols <- train(
+  price ~., 
+  data = baked_train, 
+  method = "lm", 
+  trControl = cv,
   metric = "RMSE"
 )
-pumpkin.knn
+ggplot(pumpkin.ols)
 
 # new data (test)
-predictions_reg <- predict(pumpkin.reg, pumpkin_test)
+predictions_reg <- predict(pumpkin.ols, baked_test)
 test_RMSE_reg =sqrt(mean((log(pumpkin_test$price) - predictions_reg)^2))
 test_RMSE_reg
+
+#KNN model regression:
+# Tune a knn model using grid search (here we use caret package)
+knn_fit <- train(
+  price ~ ., 
+  data = baked_train, 
+  method = "knn", 
+  trControl = cv, 
+  tuneGrid = hyper_grid,
+  metric = "RMSE"
+)
+ggplot(knn_fit)
+
+pred = predict(knn_fit, newdata=baked_test)
+pred
+test_error = sqrt(mean((pumpkin_test$price - pred)^2))
+test_error
+
+
+#PCR model:
+set.seed(123)
+cv_model_pcr <- train(
+  price~., 
+  data = baked_train, 
+  method = "pcr",
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 100
+)
+
+# model with lowest RMSE
+cv_model_pcr$bestTune
+##    ncomp
+## 11    11
+
+# results for model with lowest RMSE
+cv_model_pcr$results %>%
+  dplyr::filter(ncomp == pull(cv_model_pcr$bestTune))
+##   ncomp     RMSE  Rsquared      MAE   RMSESD RsquaredSD    MAESD
+## 1     11 1.521673 0.9858002 0.9849692 0.3521369 0.005875744 0.1295128
+# plot cross-validated RMSE
+ggplot(cv_model_pcr)
+
+
+
+#PLS regression
+# number of principal components to use as predictors from 1-30
+set.seed(123)
+cv_model_pls <- train(
+  price ~ ., 
+  data = baked_train, 
+  method = "pls",
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 30
+)
+
+# model with lowest RMSE
+cv_model_pls$bestTune
+##    ncomp
+## 11    11
+
+# results for model with lowest RMSE
+cv_model_pls$results %>%
+  dplyr::filter(ncomp == pull(cv_model_pls$bestTune))
+##   ncomp     RMSE  Rsquared      MAE   RMSESD RsquaredSD   MAESD
+## 1    11 1.538445 0.9856597 0.9865778 0.2445409 0.003772062 0.09419094
+
+# plot cross-validated RMSE
+ggplot(cv_model_pls)
+
+
+#Question l:####
+# ______________________________________________
+# Summary of cv-error for the models tested here
+# ______________________________________________
+summary(resamples(list(
+  model1 = cv_model_pcr, 
+  model2 = cv_model_pls,
+  model3 = pumpkin.ols,
+  model4 = knn_fit
+)))
+
+summary(cv_model_pcr)
+
+
+
+
+
+
+
+
+
+
+
 
 
 
