@@ -3,7 +3,7 @@ write_xlsx(pumpkin_data,"~/ML1/Exam2023\\pumpkintrain.xlsx")
 
 #Question a:####
 library(dplyr)
-pumpkin_data <- read.csv("~/ML1/Exam2023/US-pumpkins.csv", stringsAsFactors=TRUE)
+pumpkin <- read.csv("~/ML1/Exam2023/US-pumpkins.csv", stringsAsFactors=TRUE)
 
 #Question b:####
 str(pumpkin_data)
@@ -11,7 +11,7 @@ dim(pumpkin_data)
 View(pumpkin_data[1:5, ])
 
 #Question c:####
-pumpkin_data <- pumpkin_data %>%
+pumpkin_data <- pumpkin %>%
   select(-c(X, X.1))
 
 #Question d:####
@@ -41,11 +41,27 @@ pumpkin_data <- pumpkin_data %>%
 #Checking for missing values again:
 library (Hmisc)
 plot_missing(pumpkin_data)
-str(pumpkin_data)
-pumpkin_data$Color <- impute(pumpkin_data$Color)
+
+# mutate missing values
+pumpkin_data <- pumpkin_data %>%
+  mutate(Mostly.High
+         = replace(Mostly.High,
+                   is.na(Mostly.High),
+                   mean(Mostly.High, na.rm = TRUE)),
+         Mostly.Low
+         = replace(Mostly.Low,
+                   is.na(Mostly.Low),
+                   mean(Mostly.Low, na.rm = TRUE)))
 #Two variables Mostly.High and Mostly.low have 5.86% missing values, which is ok in this case. But i will apply
 #knn-imputation because it looks like the prices are in some sort of range. The prices are integer and the
 #imputation should be so.
+
+pumpkin_data$Item.Size <- impute(pumpkin_data$Item.Size)
+pumpkin_data$Color <- impute(pumpkin_data$Color)
+pumpkin_data$Variety <- impute(pumpkin_data$Variety)
+pumpkin_data$Origin <- impute(pumpkin_data$Origin)
+
+plot_missing(pumpkin_data)
 
 #Question f:####
 # Create a new column for average Price
@@ -65,8 +81,7 @@ log_pumpkin <- log(pumpkin_data$price)
 
 # Box-Cox transformation (lambda=0 is equivalent to log(x))
 library(forecast)
-BC_pumpkin <- forecast::BoxCox(pumpkin_data$price, 
-                                            lambda="auto") 
+pumpkin_data <- forecast::BoxCox(pumpkin_data$price, lambda="auto") 
 
 hist(log_pumpkin, breaks = 20, 
      col = "lightgreen", border = "lightgreen",
@@ -83,6 +98,9 @@ library(caret)
 caret::nearZeroVar(pumpkin_data, saveMetrics = TRUE) %>% 
   tibble::rownames_to_column() %>% 
   filter(nzv)
+
+pumpkin_data <- pumpkin_data %>%
+  select(-c(Repack))
 #Later in the recipe variables such as Type, Origin.District and repack will be eliminated. In the whole dataset,
 #these three predictors are classified as near zero variance, but later when the data is split up into train/test
 #or CV/bootstrap.
@@ -118,12 +136,13 @@ pumpkin_train <- training(split)
 pumpkin_test <- testing(split)
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
-  step_impute_knn(all_predictors(), neighbors = 6) %>%
+  step_impute_knn(all_numeric_predictors()) %>%
+  step_impute_mode(all_factor_predictors()) %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
   step_integer(all_predictors(), zero_based = F) %>%  
   #step_dummy(all_nominal(), -all_outcomes(), one_hot = TRUE) %>%
   step_BoxCox(all_outcomes()) %>% 
-  step_nzv(all_predictors(), -all_outcomes()) %>% 
+  #step_nzv(all_predictors(), -all_outcomes()) %>% 
   step_center(all_numeric(), -all_outcomes()) %>%
   step_scale(all_numeric(), -all_outcomes())
 
@@ -136,110 +155,96 @@ baked_train
 baked_test
 
 #Question k:####
-#First OLS -> KNN -> PCR -> PLS
 cv <- trainControl(
   method = "repeatedcv", 
   number = 10, 
   repeats = 1)
 
-# Construct grid of hyperparameter values
-hyper_grid <- expand.grid(k = seq(2, 25, by = 1))
-
-pumpkin.ols <- train(
-  price ~., 
-  data = baked_train, 
+cv_model_ols <- train(
+  pumpkin_recipe,      
+  data = pumpkin_train, 
   method = "lm", 
-  trControl = cv,
-  metric = "RMSE"
-)
-ggplot(pumpkin.ols)
-
-# new data (test)
-predictions_reg <- predict(pumpkin.ols, baked_test)
-test_RMSE_reg =sqrt(mean((log(pumpkin_test$price) - predictions_reg)^2))
-test_RMSE_reg
-
-#KNN model regression:
-# Tune a knn model using grid search (here we use caret package)
-knn_fit <- train(
-  price ~ ., 
-  data = baked_train, 
-  method = "knn", 
   trControl = cv, 
-  tuneGrid = hyper_grid,
   metric = "RMSE"
 )
-ggplot(knn_fit)
+cv_model_ols
+#  RMSE      Rsquared   MAE    
+# 2.215722  0.9643227  1.08835
 
-pred = predict(knn_fit, newdata=baked_test)
-pred
-test_error = sqrt(mean((pumpkin_test$price - pred)^2))
-test_error
-
-
-#PCR model:
+#PCR regression
 set.seed(123)
 cv_model_pcr <- train(
-  price~., 
-  data = baked_train, 
+  pumpkin_recipe, 
+  data = pumpkin_train, 
   method = "pcr",
-  trControl = trainControl(method = "cv", number = 10),
-  tuneLength = 100
+  trControl = cv,
+  tuneLength = 13,
+  metric = "RMSE"
 )
-
 # model with lowest RMSE
 cv_model_pcr$bestTune
 ##    ncomp
-## 11    11
+##11    11
 
 # results for model with lowest RMSE
 cv_model_pcr$results %>%
   dplyr::filter(ncomp == pull(cv_model_pcr$bestTune))
 ##   ncomp     RMSE  Rsquared      MAE   RMSESD RsquaredSD    MAESD
-## 1     11 1.521673 0.9858002 0.9849692 0.3521369 0.005875744 0.1295128
+## 1     11 2.256462 0.9646086 1.104872 1.343004 0.04671856 0.227625
 # plot cross-validated RMSE
 ggplot(cv_model_pcr)
-
-
 
 #PLS regression
 # number of principal components to use as predictors from 1-30
 set.seed(123)
 cv_model_pls <- train(
-  price ~ ., 
-  data = baked_train, 
+  pumpkin_recipe, 
+  data = pumpkin_train, 
   method = "pls",
-  trControl = trainControl(method = "cv", number = 10),
-  tuneLength = 30
+  trControl = cv,
+  tuneLength = 13,
+  metric = "RMSE"
 )
-
 # model with lowest RMSE
 cv_model_pls$bestTune
 ##    ncomp
-## 11    11
+## 8    8
 
 # results for model with lowest RMSE
 cv_model_pls$results %>%
   dplyr::filter(ncomp == pull(cv_model_pls$bestTune))
 ##   ncomp     RMSE  Rsquared      MAE   RMSESD RsquaredSD   MAESD
-## 1    11 1.538445 0.9856597 0.9865778 0.2445409 0.003772062 0.09419094
+## 1    11 2.259631 0.9645193 1.103321 1.345746 0.04688409 0.2321307
 
 # plot cross-validated RMSE
 ggplot(cv_model_pls)
 
+#KNN-regression:
+# Construct grid of hyperparameter values
+hyper_grid <- expand.grid(k = seq(2, 25, by = 1))
 
-#Question l:####
-# ______________________________________________
+cv_knn_model <- train(
+  pumpkin_recipe,      
+  data = pumpkin_train, 
+  method = "knn", 
+  trControl = cv, 
+  tuneGrid = hyper_grid,
+  metric = "RMSE"
+)
+cv_knn_model 
+ggplot(cv_knn_model)
+
+# Question l:####_______________________________
 # Summary of cv-error for the models tested here
 # ______________________________________________
 summary(resamples(list(
-  model1 = cv_model_pcr, 
-  model2 = cv_model_pls,
-  model3 = pumpkin.ols,
-  model4 = knn_fit
+  model1 = cv_model_ols,
+  model2 = cv_model_pcr, 
+  model3 = cv_model_pls,
+  model4 = cv_knn_model
 )))
 
-summary(cv_model_pcr)
+#Question m:####
 
 
 
