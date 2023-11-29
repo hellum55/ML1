@@ -136,15 +136,15 @@ pumpkin_train <- training(split)
 pumpkin_test <- testing(split)
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
+  #step_nzv(all_predictors(), -all_outcomes()) %>% 
   step_impute_knn(all_numeric_predictors()) %>%
   step_impute_mode(all_factor_predictors()) %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
-  step_integer(all_predictors(), zero_based = F) %>%  
-  #step_dummy(all_nominal(), -all_outcomes(), one_hot = TRUE) %>%
+  step_integer(all_predictors(), zero_based = T) %>%  
   step_BoxCox(all_outcomes()) %>% 
-  #step_nzv(all_predictors(), -all_outcomes()) %>% 
   step_center(all_numeric(), -all_outcomes()) %>%
   step_scale(all_numeric(), -all_outcomes())
+  #step_dummy(all_nominal(), -all_outcomes(), one_hot = TRUE) %>%
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
 prepare
@@ -171,6 +171,11 @@ cv_model_ols
 #  RMSE      Rsquared   MAE    
 # 2.215722  0.9643227  1.08835
 
+# new data (test)
+predictions_reg <- predict(cv_model_ols, pumpkin_test)
+test_RMSE_reg =sqrt(mean((log(pumpkin_test$price) - predictions_reg)^2))
+test_RMSE_reg
+
 #PCR regression
 set.seed(123)
 cv_model_pcr <- train(
@@ -190,9 +195,14 @@ cv_model_pcr$bestTune
 cv_model_pcr$results %>%
   dplyr::filter(ncomp == pull(cv_model_pcr$bestTune))
 ##   ncomp     RMSE  Rsquared      MAE   RMSESD RsquaredSD    MAESD
-## 1     11 2.256462 0.9646086 1.104872 1.343004 0.04671856 0.227625
+## 1     11 3.008972 0.9379411 1.274799 1.20007  0.0614668 0.2652216
 # plot cross-validated RMSE
 ggplot(cv_model_pcr)
+
+#new data (test)
+predictions_pcr <- predict(cv_model_pcr, pumpkin_test)
+test_RMSE_pcr =sqrt(mean((log(pumpkin_test$price) - predictions_pcr)^2))
+test_RMSE_pcr
 
 #PLS regression
 # number of principal components to use as predictors from 1-30
@@ -208,16 +218,21 @@ cv_model_pls <- train(
 # model with lowest RMSE
 cv_model_pls$bestTune
 ##    ncomp
-## 8    8
+## 10    10
 
 # results for model with lowest RMSE
 cv_model_pls$results %>%
   dplyr::filter(ncomp == pull(cv_model_pls$bestTune))
 ##   ncomp     RMSE  Rsquared      MAE   RMSESD RsquaredSD   MAESD
-## 1    11 2.259631 0.9645193 1.103321 1.345746 0.04688409 0.2321307
+## 1    10 2.987223 0.9395224 1.265078 1.128156  0.0564297 0.2417143
 
 # plot cross-validated RMSE
 ggplot(cv_model_pls)
+
+# new data (test)
+predictions_pls <- predict(cv_model_pls, pumpkin_test)
+test_RMSE_pls =sqrt(mean((log(pumpkin_test$price) - predictions_pls)^2))
+test_RMSE_pls
 
 #KNN-regression:
 # Construct grid of hyperparameter values
@@ -234,6 +249,11 @@ cv_knn_model <- train(
 cv_knn_model 
 ggplot(cv_knn_model)
 
+# new data (test)
+predictions_knn <- predict(cv_knn_model, pumpkin_test)
+test_RMSE_knn =sqrt(mean((log(pumpkin_test$price) - predictions_knn)^2))
+test_RMSE_knn
+
 # Question l:####_______________________________
 # Summary of cv-error for the models tested here
 # ______________________________________________
@@ -245,8 +265,12 @@ summary(resamples(list(
 )))
 
 #Question m:####
+# new data (test)
+predictions_reg <- predict(cv_model_ols, pumpkin_test)
+test_RMSE_reg =sqrt(mean((log(pumpkin_test$price) - predictions_reg)^2))
+test_RMSE_reg
 
-
+#test RMSE of 23.71697
 
 
 
