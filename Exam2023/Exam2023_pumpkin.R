@@ -68,6 +68,13 @@ plot_missing(pumpkin_data)
 pumpkin_data <- pumpkin_data %>% 
   mutate(price = (Low.Price + High.Price)/2)
 
+#Check for outliers:
+hist(pumpkin_data$price,
+     xlab = "price",
+     main = "Histogram of price",
+     breaks = sqrt(nrow(pumpkin_data))
+) # set number of bins
+
 #Check for appropriate normalization:
 #First checking for the distribution of price without any transformation:
 par(mfrow=c(1,3))
@@ -136,15 +143,14 @@ pumpkin_train <- training(split)
 pumpkin_test <- testing(split)
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
-  #step_nzv(all_predictors(), -all_outcomes()) %>% 
-  step_impute_knn(all_numeric_predictors()) %>%
-  step_impute_mode(all_factor_predictors()) %>%
-  step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
-  step_integer(all_predictors(), zero_based = T) %>%  
-  step_BoxCox(all_outcomes()) %>% 
+  step_impute_knn(all_predictors()) %>%
+  step_BoxCox(all_outcomes()) %>%
+  #step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
+  step_integer(all_predictors(), zero_based = T) %>%
+  step_nzv(all_predictors(), -all_outcomes()) %>% 
   step_center(all_numeric(), -all_outcomes()) %>%
   step_scale(all_numeric(), -all_outcomes())
-  #step_dummy(all_nominal(), -all_outcomes(), one_hot = TRUE) %>%
+  #step_dummy(all_nominal_predictors(), -City.Name, -Package, one_hot = TRUE)
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
 prepare
@@ -153,6 +159,7 @@ baked_train <- bake(prepare, new_data = pumpkin_train)
 baked_test <- bake(prepare, new_data = pumpkin_test)
 baked_train
 baked_test
+str(pumpkin_train)
 
 #Question k:####
 cv <- trainControl(
@@ -161,29 +168,44 @@ cv <- trainControl(
   repeats = 1)
 
 cv_model_ols <- train(
-  pumpkin_recipe,      
-  data = pumpkin_train, 
+  price~.,      
+  data = baked_train, 
   method = "lm", 
   trControl = cv, 
   metric = "RMSE"
 )
 cv_model_ols
 #  RMSE      Rsquared   MAE    
-# 2.215722  0.9643227  1.08835
+# 1.523977  0.9859443  0.9645477
 
 # new data (test)
-predictions_reg <- predict(cv_model_ols, pumpkin_test)
-test_RMSE_reg =sqrt(mean((log(pumpkin_test$price) - predictions_reg)^2))
-test_RMSE_reg
+predictions <- predict(cv_model_ols, baked_test) 
+predictions 
+RMSE_ols = sqrt(sum((baked_test$price - predictions)^2/nrow(baked_test)))
+RMSE1
+
+cv_model_lmStepAIC <- train(
+  price~., 
+  data = baked_train, 
+  method = "lmStepAIC", direction="both", # lmStepAIC is a stepwise regression discussed later in the course
+  trControl = trainControl(method = "cv", number = 10)
+)
+summary(cv_model_lmStepAIC)
+#
+
+predictions <- predict(cv_model_lmStepAIC, baked_test) 
+predictions 
+RMSE_stepAIC = sqrt(sum((baked_test$price - predictions)^2/nrow(baked_test)))
+RMSE2
 
 #PCR regression
 set.seed(123)
 cv_model_pcr <- train(
-  pumpkin_recipe, 
-  data = pumpkin_train, 
+  price~., 
+  data = baked_train, 
   method = "pcr",
   trControl = cv,
-  tuneLength = 13,
+  tuneLength = 25,
   metric = "RMSE"
 )
 # model with lowest RMSE
@@ -195,52 +217,52 @@ cv_model_pcr$bestTune
 cv_model_pcr$results %>%
   dplyr::filter(ncomp == pull(cv_model_pcr$bestTune))
 ##   ncomp     RMSE  Rsquared      MAE   RMSESD RsquaredSD    MAESD
-## 1     11 3.008972 0.9379411 1.274799 1.20007  0.0614668 0.2652216
+## 1     11 1.530776 0.9857842 0.9653231 0.2394337 0.003698404 0.0909897
 # plot cross-validated RMSE
 ggplot(cv_model_pcr)
 
 #new data (test)
-predictions_pcr <- predict(cv_model_pcr, pumpkin_test)
-test_RMSE_pcr =sqrt(mean((log(pumpkin_test$price) - predictions_pcr)^2))
-test_RMSE_pcr
+predictions_pcr <- predict(cv_model_pcr, baked_test) 
+RMSE_pcr = sqrt(sum((baked_test$price - predictions_pcr)^2/nrow(baked_test)))
+RMSE3
 
 #PLS regression
 # number of principal components to use as predictors from 1-30
 set.seed(123)
 cv_model_pls <- train(
-  pumpkin_recipe, 
-  data = pumpkin_train, 
+  price~., 
+  data = baked_train, 
   method = "pls",
   trControl = cv,
-  tuneLength = 13,
+  tuneLength = 25,
   metric = "RMSE"
 )
 # model with lowest RMSE
 cv_model_pls$bestTune
 ##    ncomp
-## 10    10
+## 11    11
 
 # results for model with lowest RMSE
 cv_model_pls$results %>%
   dplyr::filter(ncomp == pull(cv_model_pls$bestTune))
 ##   ncomp     RMSE  Rsquared      MAE   RMSESD RsquaredSD   MAESD
-## 1    10 2.987223 0.9395224 1.265078 1.128156  0.0564297 0.2417143
+## 1    11 1.531377 0.9857728 0.9651711 0.2396004 0.003704062 0.09061704
 
 # plot cross-validated RMSE
 ggplot(cv_model_pls)
 
 # new data (test)
-predictions_pls <- predict(cv_model_pls, pumpkin_test)
-test_RMSE_pls =sqrt(mean((log(pumpkin_test$price) - predictions_pls)^2))
-test_RMSE_pls
+predictions_pls <- predict(cv_model_pls, baked_test) 
+RMSE_pls = sqrt(sum((baked_test$price - predictions_pls)^2/nrow(baked_test)))
+RMSE4
 
 #KNN-regression:
 # Construct grid of hyperparameter values
 hyper_grid <- expand.grid(k = seq(2, 25, by = 1))
 
 cv_knn_model <- train(
-  pumpkin_recipe,      
-  data = pumpkin_train, 
+  price~.,      
+  data = baked_train, 
   method = "knn", 
   trControl = cv, 
   tuneGrid = hyper_grid,
@@ -250,35 +272,43 @@ cv_knn_model
 ggplot(cv_knn_model)
 
 # new data (test)
-predictions_knn <- predict(cv_knn_model, pumpkin_test)
-test_RMSE_knn =sqrt(mean((log(pumpkin_test$price) - predictions_knn)^2))
-test_RMSE_knn
+predictions_knn <- predict(cv_knn_model, baked_test) 
+RMSE_knn = sqrt(sum((baked_test$price - predictions_pls)^2/nrow(baked_test)))
+RMSE5
 
 # Question l:####_______________________________
 # Summary of cv-error for the models tested here
 # ______________________________________________
 summary(resamples(list(
   model1 = cv_model_ols,
-  model2 = cv_model_pcr, 
-  model3 = cv_model_pls,
-  model4 = cv_knn_model
+  model2 = cv_model_lmStepAIC,
+  model3 = cv_model_pcr, 
+  model4 = cv_model_pls,
+  model5 = cv_knn_model
 )))
 
+summary(results)
+bwplot(results)
+dotplot(results)
 #Question m:####
 # new data (test)
-predictions_reg <- predict(cv_model_ols, pumpkin_test)
-test_RMSE_reg =sqrt(mean((log(pumpkin_test$price) - predictions_reg)^2))
-test_RMSE_reg
+predictions <- predict(cv_model_ols, baked_test) 
+predictions 
+RMSE_ols = sqrt(sum((baked_test$price - predictions)^2/nrow(baked_test)))
+RMSE_ols
+#1.93 RMSE
 
-#test RMSE of 23.71697
+#Question n:####
+vip::vip(cv_model_ols, method = "model")
+#Of course the package has a huge influence on price. The bigger the package
+#The more expensive. Of course low.price/high.price has a huge influence as well
+#That´s how the price is computed. Maybe one should consider to normalize the price
+#so the price reflects the same unit price. 
 
-
-
-
-
-
-
-
+#We try to delete some "outliers". Even though im insecure if they are actually outliers:
+new_pumpkin_data <- pumpkin_data[pumpkin_data$Low.Price <= 350, ]
+new_pumpkin_data <- pumpkin_data[pumpkin_data$High.Price <= 350, ]
+new_pumpkin_data <- pumpkin_data[pumpkin_data$price <= 350, ]
 
 
 
