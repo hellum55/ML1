@@ -52,11 +52,34 @@ std_adj <- sd(pumpkin_data$Price * pumpkin_data$Spread) / mean(pumpkin_data$Spre
 #Question f:####
 library(boot)
 set.seed(123)
-  
-(bs <- boot(pumpkin_data$AdjPrice, function(v, i) mean(v[i]), 1000))
-se <- sd(bs$t)
-(mu <- mean(pumpkin_data$Adjprice))
+AdjPrice.fn<-function(data, index){
+  Price<-data$Price[index]
+  Spread<-data$Spread[index]
+  median(Price*Spread)/mean(Spread)
+}
+
+AdjPrice.fn(pumpkin_data, sample(1:1473, 1473, replace = TRUE))
+
+boot.out=boot(data=pumpkin_data, statistic=AdjPrice.fn, R=1000)
+boot.out
+plot(boot.out)
+
+#95% confidensinterval
+se <- sd(boot.out$t)
+mu <- mean(boot.out$t0)
+
 c(mu - 2*se, mu + 2*se)
+
+#Question g:####
+set.seed(123)
+pumpkin_train <- pumpkin_data %>%
+  filter(year < 2017)
+
+pumpkin_test <- pumpkin_data %>%
+  filter(year == 2017)
+
+#Question h:####
+
 
 
 
