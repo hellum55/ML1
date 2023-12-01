@@ -79,8 +79,51 @@ pumpkin_test <- pumpkin_data %>%
   filter(year == 2017)
 
 #Question h:####
+#First we will predict price using OLS:
+library(glmnet)
 
+#get data in (x,y) format (without intercept)
+set.seed(1)
+X <- model.matrix(Price~., pumpkin_train)[,-1]
+y <- pumpkin_train$Price
 
+train <- sample(1:nrow(pumpkin_train))
+test <- (-train)
+y.test <- y[test]
 
+reg.ols<-lm(y, pumpkin_train)
+summary(reg.ols)
+
+#Predict with Ridge-reg with 5-fold cv:
+#Call the glm function with alpha=0
+
+#decreasing lambda grid from 1000 to 0.01 
+set.seed(123)
+l.grid <- 10^seq(3,-2,length=100)
+
+fit.ridge <- glmnet(X,y,alpha = 0)
+plot(fit.ridge, xvar="lambda", label = TRUE)
+cv.ridge <- cv.glmnet(X[train, ], y[train], alpha = 0, nfolds = 5, lambda = l.grid)
+plot(cv.ridge)
+bestlam.ridge <- cv.ridge$lambda.min
+bestlam.ridge
+
+#evaluate MSE on test set:
+ridge.pred <- predict(cv.ridge, s = bestlam.ridge, newx = X[test, ])
+mean((ridge.pred - y.test)^2)
+
+#predict with lasso (LOOCV):
+#default alpha value is 1 which gives a lasso model
+
+#LOOCV using cv.glmnet
+n <- length(y)  #sample size
+
+cv.lasso <- cv.glmnet(X, y, alpha = 1, nfolds = n, lambda = l.grid)
+plot(cv.lasso)
+coef(cv.lasso)
+bestlam.lasso<-cv.lasso$lambda.min
+bestlam.lasso
+
+#Question i:####
 
 
