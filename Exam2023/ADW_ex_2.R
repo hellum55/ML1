@@ -94,20 +94,28 @@ y.test <- pumpkin_test$Price
 
 #Question h:####
 #First we will predict price using OLS:
-fit.ols <- lm(Price ~ ., data = pumpkin_train)
-mean((predict(fit.ols, pumpkin_test) - y.test)^2)
+reg.lm<-lm(y~X, pumpkin_data)
+lm.pred = predict(lm.fit, pumpkin_test)
+
+mean((pumpkin_test[, "Price"] - lm.pred)^2)
+rsq_ridge_cv <- cor(y.test, lm.pred)^2
+rsq_ridge_cv
+RMSE1
 
 #Predict with Ridge-reg with 5-fold cv:
 #Call the glm function with alpha=0
 
-#decreasing lambda grid from 1000 to 0.01 
+#decreasing lambda grid from 1000 to 0.01
+install.packages("glmnet")
+library(glmnet)
 set.seed(123)
-l.grid <- seq(0.1, 100, by=0.1)
+l.grid = 10 ^ seq(4, -2, length=100)
 
-cv.ridge <- cv.glmnet(x.train, y.train, alpha = 0,
+cv.ridge <- cv.glmnet(X, y, alpha = 0,
                       nfolds = 5, 
                       lambda = l.grid,
-                      thresh = 1e-12)
+                      thresh = 1e-12, 
+                      type.measure = "mse")
 
 plot(cv.ridge)
 bestlam.ridge <- cv.ridge$lambda.min
@@ -129,7 +137,7 @@ plot(y.test, ridge.pred, main = "Predicted price vs actual price")
 n <- length(y.train)  #sample size
 set.seed(123)
 
-cv.lasso <- cv.glmnet(x.train, y.train, alpha = 1, nfolds = n, lambda = l.grid)
+cv.lasso <- cv.glmnet(x.train, y.train, alpha = 1, nfolds = n, lambda = l.grid, type.measure = "mse")
 plot(cv.lasso)
 coef(cv.lasso)
 bestlam.lasso<-cv.lasso$lambda.min
