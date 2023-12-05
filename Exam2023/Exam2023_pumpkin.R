@@ -25,6 +25,7 @@ pumpkin_data <- pumpkin_data %>%
 #Question e:####
 library(visdat)
 library(DataExplorer)
+data <- read.csv("data.csv", na.strings = c("", " ", "NA", "N/A", ".", "NaN", "MISSING")) 
 pumpkin_data[pumpkin_data==""] <- NA
 sum(is.na(pumpkin_data))
 
@@ -66,14 +67,24 @@ plot_missing(pumpkin_data)
 #Question f:####
 # Create a new column for average Price
 pumpkin_data <- pumpkin_data %>% 
-  mutate(price = (Low.Price + High.Price)/2)
+  mutate(price = (Low.Price + High.Price)/2) %>%
+  select(-Low.Price, -High.Price, -Mostly.Low, -Mostly.High)
+
+# Retain only pumpkins with the string "bushel"
+pumpkin_data <- pumpkin_data %>% 
+  filter(str_detect(string = Package, pattern = "bushel"))
+
+# Normalize the pricing so that you show the pricing per bushel, not per 1 1/9 or 1/2 bushel
+pumpkin_data <- pumpkin_data %>% 
+  mutate(price = case_when(
+    str_detect(Package, "1 1/9") ~ price/(1.1),
+    str_detect(Package, "1/2") ~ price*2,
+    TRUE ~ price))
 
 #Check for outliers:
-hist(pumpkin_data$price,
-     xlab = "price",
-     main = "Histogram of price",
-     breaks = sqrt(nrow(pumpkin_data))
-) # set number of bins
+attach(pumpkin_data)
+plot(month, price, main="Scatterplot Example",
+     xlab="months ", ylab="price ", pch=19) # set number of bins
 
 #Check for appropriate normalization:
 #First checking for the distribution of price without any transformation:
@@ -88,12 +99,12 @@ log_pumpkin <- log(pumpkin_data$price)
 
 # Box-Cox transformation (lambda=0 is equivalent to log(x))
 library(forecast)
-pumpkin_data <- forecast::BoxCox(pumpkin_data$price, lambda="auto") 
+pumpkin_BC <- forecast::BoxCox(pumpkin_data$price, lambda="auto") 
 
 hist(log_pumpkin, breaks = 20, 
      col = "lightgreen", border = "lightgreen",
      ylim = c(0, 800) )
-hist(BC_pumpkin, breaks = 20, 
+hist(pumpkin_BC, breaks = 20, 
      col = "lightblue", border = "lightblue", 
      ylim = c(0, 800))
 
@@ -145,12 +156,13 @@ pumpkin_test <- testing(split)
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors()) %>%
   step_BoxCox(all_outcomes()) %>%
-  #step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
-  step_integer(all_predictors(), zero_based = T) %>%
-  step_nzv(all_predictors(), -all_outcomes()) %>% 
+  step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
+  step_integer(Item.Size, zero_based = T) %>%
+  step_dummy(all_nominal(), one_hot = TRUE) %>%
+  step_nzv(all_predictors(), -all_outcomes()) %>%
+  step_normalize(all_numeric_predictors()) %>%
   step_center(all_numeric(), -all_outcomes()) %>%
   step_scale(all_numeric(), -all_outcomes())
-  #step_dummy(all_nominal_predictors(), -City.Name, -Package, one_hot = TRUE)
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
 prepare
@@ -160,6 +172,15 @@ baked_test <- bake(prepare, new_data = pumpkin_test)
 baked_train
 baked_test
 str(pumpkin_train)
+
+#Check for correlation:
+library(corrplot)
+# Obtain correlation matrix
+corr_mat <- cor(baked_train)
+corrplot(corr_mat, method = "shade", shade.col = NA, tl.col = "black",
+         tl.srt = 45, addCoef.col = "black", cl.pos = "n", order = "original")
+
+#Very high correlations between mostly low and mostly high. delete these variables.
 
 #Question k:####
 cv <- trainControl(
@@ -176,13 +197,13 @@ cv_model_ols <- train(
 )
 cv_model_ols
 #  RMSE      Rsquared   MAE    
-# 1.523977  0.9859443  0.9645477
+# 6.048651  0.7759989  3.636813
 
 # new data (test)
 predictions <- predict(cv_model_ols, baked_test) 
 predictions 
 RMSE_ols = sqrt(sum((baked_test$price - predictions)^2/nrow(baked_test)))
-RMSE1
+RMSE_ols
 
 cv_model_lmStepAIC <- train(
   price~., 
@@ -191,7 +212,7 @@ cv_model_lmStepAIC <- train(
   trControl = trainControl(method = "cv", number = 10)
 )
 summary(cv_model_lmStepAIC)
-#
+
 
 predictions <- predict(cv_model_lmStepAIC, baked_test) 
 predictions 
@@ -205,26 +226,26 @@ cv_model_pcr <- train(
   data = baked_train, 
   method = "pcr",
   trControl = cv,
-  tuneLength = 25,
+  tuneLength = 50,
   metric = "RMSE"
 )
 # model with lowest RMSE
 cv_model_pcr$bestTune
 ##    ncomp
-##11    11
+## 27    27
 
 # results for model with lowest RMSE
 cv_model_pcr$results %>%
   dplyr::filter(ncomp == pull(cv_model_pcr$bestTune))
 ##   ncomp     RMSE  Rsquared      MAE   RMSESD RsquaredSD    MAESD
-## 1     11 1.530776 0.9857842 0.9653231 0.2394337 0.003698404 0.0909897
+## 1    25 6.53572 0.7378014 4.229481 0.8922528 0.05922489 0.4612548
 # plot cross-validated RMSE
 ggplot(cv_model_pcr)
 
 #new data (test)
 predictions_pcr <- predict(cv_model_pcr, baked_test) 
 RMSE_pcr = sqrt(sum((baked_test$price - predictions_pcr)^2/nrow(baked_test)))
-RMSE3
+RMSE_pcr
 
 #PLS regression
 # number of principal components to use as predictors from 1-30
@@ -234,13 +255,13 @@ cv_model_pls <- train(
   data = baked_train, 
   method = "pls",
   trControl = cv,
-  tuneLength = 25,
+  tuneLength = 50,
   metric = "RMSE"
 )
 # model with lowest RMSE
 cv_model_pls$bestTune
 ##    ncomp
-## 11    11
+## 17    17
 
 # results for model with lowest RMSE
 cv_model_pls$results %>%
@@ -254,11 +275,11 @@ ggplot(cv_model_pls)
 # new data (test)
 predictions_pls <- predict(cv_model_pls, baked_test) 
 RMSE_pls = sqrt(sum((baked_test$price - predictions_pls)^2/nrow(baked_test)))
-RMSE4
+RMSE_pls
 
 #KNN-regression:
 # Construct grid of hyperparameter values
-hyper_grid <- expand.grid(k = seq(2, 25, by = 1))
+hyper_grid <- expand.grid(k = seq(2, 30, by = 1))
 
 cv_knn_model <- train(
   price~.,      
@@ -273,15 +294,15 @@ ggplot(cv_knn_model)
 
 # new data (test)
 predictions_knn <- predict(cv_knn_model, baked_test) 
-RMSE_knn = sqrt(sum((baked_test$price - predictions_pls)^2/nrow(baked_test)))
-RMSE5
+RMSE_knn = sqrt(sum((baked_test$price - predictions_knn)^2/nrow(baked_test)))
+RMSE_knn
 
 # Question l:####_______________________________
 # Summary of cv-error for the models tested here
 # ______________________________________________
 summary(resamples(list(
   model1 = cv_model_ols,
-  model2 = cv_model_lmStepAIC,
+  #model2 = cv_model_lmStepAIC,
   model3 = cv_model_pcr, 
   model4 = cv_model_pls,
   model5 = cv_knn_model
@@ -292,24 +313,21 @@ bwplot(results)
 dotplot(results)
 #Question m:####
 # new data (test)
-predictions <- predict(cv_model_ols, baked_test) 
+predictions <- predict(cv_knn_model, baked_test) 
 predictions 
-RMSE_ols = sqrt(sum((baked_test$price - predictions)^2/nrow(baked_test)))
-RMSE_ols
-#1.93 RMSE
+RMSE_knn = sqrt(sum((baked_test$price - predictions)^2/nrow(baked_test)))
+RMSE_knn
+#3.396111 RMSE
 
 #Question n:####
-vip::vip(cv_model_ols, method = "model")
+library(vip)
+vip(cv_knn_model, num_features = 24, method = "model")
 #Of course the package has a huge influence on price. The bigger the package
 #The more expensive. Of course low.price/high.price has a huge influence as well
 #That´s how the price is computed. Maybe one should consider to normalize the price
 #so the price reflects the same unit price. 
 
-#We try to delete some "outliers". Even though im insecure if they are actually outliers:
-new_pumpkin_data <- pumpkin_data[pumpkin_data$Low.Price <= 350, ]
-new_pumpkin_data <- pumpkin_data[pumpkin_data$High.Price <= 350, ]
-new_pumpkin_data <- pumpkin_data[pumpkin_data$price <= 350, ]
-
-
+library(pdp)
+pdp::partial(cv_model_pls, "Item.Size", grid.resolution = 20, plot = TRUE)
 
 
