@@ -23,6 +23,10 @@ pumpkin_data <- pumpkin_data %>%
           year = year(Date)) %>%
   select(-Date)
 
+pumpkin_data$month <- as.factor(pumpkin_data$month)
+pumpkin_data$year <- as.factor(pumpkin_data$year)
+str(pumpkin_data)
+
 #Question e:####
 library(visdat)
 library(DataExplorer)
@@ -142,6 +146,9 @@ pumpkin_data %>%
   geom_col(fill = "midnightblue", alpha = 0.7) +
   ylab("Pumpkin Price")
 
+
+plot_bar(pumpkin_data)
+
 #Question j:####
 #Splitting the data:
 # data split
@@ -159,11 +166,12 @@ pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_YeoJohnson(all_outcomes()) %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
   step_integer(Item.Size, zero_based = T) %>%
+  step_integer(month, zero_based = T) %>%
+  step_integer(year, zero_based = T) %>%
   step_dummy(all_nominal(), one_hot = TRUE) %>%
   step_nzv(all_predictors(), -all_outcomes()) %>%
   step_center(all_numeric(), -all_outcomes()) %>%
-  step_scale(all_numeric(), -all_outcomes()) %>%
-  step_normalize(all_numeric_predictors())
+  step_scale(all_numeric(), -all_outcomes())
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
 prepare

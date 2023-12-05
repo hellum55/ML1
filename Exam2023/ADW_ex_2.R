@@ -20,7 +20,7 @@ library(ggplot2)
 
 # Basic density
 #Price
-par(mfrow=c(1,2))
+par(mfrow=c(2,2))
 
 # Histogram with density plot (Price)
 ggplot(pumpkin_data, aes(x=Price)) + 
@@ -40,14 +40,19 @@ pumpkin_data <- pumpkin_data %>%
          year = year(Date)) %>%
   select(-Date)
 
+pumpkin_data$month <- as.factor(pumpkin_data$month)
+pumpkin_data$year <- as.factor(pumpkin_data$year)
+
 #Question d:####
 pumpkin_data[pumpkin_data==""] <- NA
 pumpkin_data <- na.omit(pumpkin_data)
 
 #Question e:###
 AdjPrice <- median(pumpkin_data$Price*pumpkin_data$Spread)/mean(pumpkin_data$Spread)
-std_adj <- sd(pumpkin_data$Price * pumpkin_data$Spread) / mean(pumpkin_data$Spread)
 
+std_adj <- sqrt(sum((pumpkin_data$Price - AdjPrice)^2) / (1473-1))
+
+se <- std_adj/sqrt(1473)
 
 #Question f:####
 library(boot)
