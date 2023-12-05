@@ -3,7 +3,8 @@ write_xlsx(pumpkin_data,"~/ML1/Exam2023\\pumpkintrain.xlsx")
 
 #Question a:####
 library(dplyr)
-pumpkin <- read.csv("~/ML1/Exam2023/US-pumpkins.csv", stringsAsFactors=TRUE)
+pumpkin <- read.csv("~/ML1/Exam2023/US-pumpkins.csv", stringsAsFactors=TRUE,
+                    na.strings = c("", " ", "NA", "N/A", ".", "NaN", "MISSING"))
 
 #Question b:####
 str(pumpkin_data)
@@ -25,8 +26,7 @@ pumpkin_data <- pumpkin_data %>%
 #Question e:####
 library(visdat)
 library(DataExplorer)
-data <- read.csv("data.csv", na.strings = c("", " ", "NA", "N/A", ".", "NaN", "MISSING")) 
-pumpkin_data[pumpkin_data==""] <- NA
+#pumpkin_data[pumpkin_data==""] <- NA
 sum(is.na(pumpkin_data))
 
 # Visually (e.g. plot)
@@ -43,7 +43,7 @@ pumpkin_data <- pumpkin_data %>%
 library (Hmisc)
 plot_missing(pumpkin_data)
 
-# mutate missing values
+# mutate missing values manually (not needed in this case)
 pumpkin_data <- pumpkin_data %>%
   mutate(Mostly.High
          = replace(Mostly.High,
@@ -71,15 +71,15 @@ pumpkin_data <- pumpkin_data %>%
   select(-Low.Price, -High.Price, -Mostly.Low, -Mostly.High)
 
 # Retain only pumpkins with the string "bushel"
-pumpkin_data <- pumpkin_data %>% 
-  filter(str_detect(string = Package, pattern = "bushel"))
+#pumpkin_data <- pumpkin_data %>% 
+#  filter(str_detect(string = Package, pattern = "bushel"))
 
 # Normalize the pricing so that you show the pricing per bushel, not per 1 1/9 or 1/2 bushel
-pumpkin_data <- pumpkin_data %>% 
-  mutate(price = case_when(
-    str_detect(Package, "1 1/9") ~ price/(1.1),
-    str_detect(Package, "1/2") ~ price*2,
-    TRUE ~ price))
+#pumpkin_data <- pumpkin_data %>% 
+#  mutate(price = case_when(
+#    str_detect(Package, "1 1/9") ~ price/(1.1),
+#    str_detect(Package, "1/2") ~ price*2,
+#    TRUE ~ price))
 
 #Check for outliers:
 attach(pumpkin_data)
@@ -117,6 +117,7 @@ caret::nearZeroVar(pumpkin_data, saveMetrics = TRUE) %>%
   tibble::rownames_to_column() %>% 
   filter(nzv)
 
+#manually dropping NZV variable (not needed in this case)
 pumpkin_data <- pumpkin_data %>%
   select(-c(Repack))
 #Later in the recipe variables such as Type, Origin.District and repack will be eliminated. In the whole dataset,
@@ -155,14 +156,14 @@ pumpkin_test <- testing(split)
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors()) %>%
-  step_BoxCox(all_outcomes()) %>%
+  step_YeoJohnson(all_outcomes()) %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
   step_integer(Item.Size, zero_based = T) %>%
   step_dummy(all_nominal(), one_hot = TRUE) %>%
   step_nzv(all_predictors(), -all_outcomes()) %>%
-  step_normalize(all_numeric_predictors()) %>%
   step_center(all_numeric(), -all_outcomes()) %>%
-  step_scale(all_numeric(), -all_outcomes())
+  step_scale(all_numeric(), -all_outcomes()) %>%
+  step_normalize(all_numeric_predictors())
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
 prepare
