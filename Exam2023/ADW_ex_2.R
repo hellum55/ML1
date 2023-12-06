@@ -76,59 +76,57 @@ mu <- mean(boot.out$t0)
 c(mu - 2*se, mu + 2*se)
 
 #Question g:####
+#get data in (x,y) format (without intercept)
 pumpkin_train <- pumpkin_data %>%
   filter(year < 2017)
 
 pumpkin_test <- pumpkin_data %>%
   filter(year == 2017)
 
-#get data in (x,y) format (without intercept)
-X <- model.matrix(Price~., pumpkin_data)[,-1]
-y <- pumpkin_data$Price
-
-x.train <- model.matrix(Price~., pumpkin_train)[,-4]
-x.test <- model.matrix(Price~., pumpkin_test)[,-4]
+x.train <- model.matrix(Price~., pumpkin_train)[,-1]
+x.test <- model.matrix(Price~., pumpkin_test)[,-1]
 
 y.train <- pumpkin_train$Price
 y.test <- pumpkin_test$Price
 
 #Question h:####
 #First we will predict price using OLS:
-reg.lm<-lm(y~X, pumpkin_data)
-lm.pred = predict(lm.fit, pumpkin_test)
+reg.lm<-lm(Price~., data = pumpkin_train)
+summary(reg.lm)
+lm.pred = predict(reg.lm, pumpkin_test)
+(ols_mse <- mean((lm.pred - pumpkin_test$Price)^2))
 
-mean((pumpkin_test[, "Price"] - lm.pred)^2)
-rsq_ridge_cv <- cor(y.test, lm.pred)^2
-rsq_ridge_cv
+rsq_reg_lm <- cor(y.test, lm.pred)^2
+rsq_reg_lm
 RMSE1
 
 #Predict with Ridge-reg with 5-fold cv:
 #Call the glm function with alpha=0
 
 #decreasing lambda grid from 1000 to 0.01
-install.packages("glmnet")
+#install.packages("glmnet")
+library(caret)
 library(glmnet)
 set.seed(123)
-l.grid = 10 ^ seq(4, -2, length=100)
+l.grid <- 10^seq(3,-2,length=100)
 
-cv.ridge <- cv.glmnet(X, y, alpha = 0,
-                      nfolds = 5, 
+cv.ridge <- cv.glmnet(X[train, ], y[train],
+                      alpha = 0,
+                      nfolds = 5,
                       lambda = l.grid,
-                      thresh = 1e-12, 
-                      type.measure = "mse")
+                      standardize = TRUE)
 
 plot(cv.ridge)
 bestlam.ridge <- cv.ridge$lambda.min
 bestlam.ridge
 
+model_ridge_best <- glmnet(x.train, y.train,
+                           alpha = 0, 
+                           lambda = bestlam.ridge,
+                           standardize = TRUE)
 
-#evaluate MSE on test set:
-ridge.pred <- predict(cv.ridge, s = bestlam.ridge, newx = x.test)
-mean((ridge.pred - y.test)^2)
-rsq_ridge_cv <- cor(y.test, ridge.pred)^2
-rsq_ridge_cv
-
-plot(y.test, ridge.pred, main = "Predicted price vs actual price")
+ridge_pred <- predict(model_ridge_best, s = bestlam.ridge, newx = x.test)
+(ridge_mse <- mean((ridge_pred - y.test)^2))
 
 #predict with lasso (LOOCV):
 #default alpha value is 1 which gives a lasso model
@@ -137,14 +135,23 @@ plot(y.test, ridge.pred, main = "Predicted price vs actual price")
 n <- length(y.train)  #sample size
 set.seed(123)
 
-cv.lasso <- cv.glmnet(x.train, y.train, alpha = 1, nfolds = n, lambda = l.grid, type.measure = "mse")
+cv.lasso <- cv.glmnet(X[train, ], y[train],
+                      alpha = 1,
+                      nfolds = n,
+                      lambda = l.grid,
+                      standardize = TRUE)
 plot(cv.lasso)
 coef(cv.lasso)
 bestlam.lasso<-cv.lasso$lambda.min
 bestlam.lasso
 
-lasso.pred <- predict(cv.lasso, s = bestlam.lasso, newx = x.test)
-mean((lasso.pred - y.test)^2)
+model_lasso_best <- glmnet(X[train, ], y[train],
+                           alpha = 1,
+                           lambda = bestlam.lasso,
+                           standardize = TRUE)
+
+lasso.pred <- predict(model_lasso_best, s = bestlam.lasso, newx = X[test, ])
+lasso_mse <- mean((lasso.pred - y.test)^2)
 rsq_lasso_cv <- cor(y.test, lasso.pred)^2
 rsq_lasso_cv
 
@@ -172,30 +179,30 @@ for (i in 0:10) {
 results
 
 #Question i:####
-fit.1v <- lm(Price ~ City.Name, data = pumpkin_train)
-mean((predict(fit.1v, pumpkin_test) - y.test)^2)
+fit.0v <- lm(Price ~ City.Name, data = pumpkin_train)
+v0_pred <- predict(fit.0v, pumpkin_test)
+v0_mse <- mean((v0_pred - y.test)^2)
 
-fit.2v <- lm(Price ~ month, data = pumpkin_train)
-mean((predict(fit.2v, pumpkin_test) - y.test)^2)
+fit.1v <- lm(Price ~ month, data = pumpkin_train)
+v1_pred <- predict(fit.1v, pumpkin_test)
+v1_mse <- mean((v1_pred - y.test)^2)
 
-fit.3v <- lm(Price ~ City.Name+month, data = pumpkin_train)
-mean((predict(fit.3v, pumpkin_test) - y.test)^2)
+fit.2v <- lm(Price ~ City.Name+month, data = pumpkin_train)
+v2_pred <- predict(fit.2v, pumpkin_test)
+v2_mse <- mean((v2_pred - pumpkin_test$Price)^2)
+v2_mse
 
+SS_tot <- sum((y.test - mean(y.test))^2)
 
-
-library(leaps)
-regfit.full <- regsubsets(Price~., pumpkin_data,
-                          nvmax = 7)
-reg.summary <- summary(regfit.full)
-reg.summary$adjr2
-
-par(mfrow = c(2, 2))
-plot(regfit.full, scale = "r2")
-plot(regfit.full, scale = "adjr2")
-plot(regfit.full, scale = "Cp")
-plot(regfit.full, scale = "bic")
-
-
+data.frame(method = c("OLS", "Ridge", "Lasso", "v0", "v1", "v2"), 
+           test_MSE = c(ols_mse, ridge_mse, lasso_mse, v1_mse, v1_mse, v2_mse), 
+           test_R2 = c(cor(y.test, lm.pred)^2,
+                       cor(y.test, ridge_pred)^2, 
+                       cor(y.test, lasso.pred)^2, 
+                       cor(y.test, v0_pred)^2, 
+                       cor(y.test, v1_pred)^2,
+                       cor(y.test, v2_pred)^2)) %>%
+arrange(test_MSE)
 
 
 
