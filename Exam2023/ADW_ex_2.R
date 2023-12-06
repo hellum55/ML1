@@ -83,11 +83,11 @@ pumpkin_test <- pumpkin_data %>%
   filter(year == 2017)
 
 #get data in (x,y) format (without intercept)
-X <- x.train <- model.matrix(Price~., pumpkin_data)[,-1]
+X <- model.matrix(Price~., pumpkin_data)[,-1]
 y <- pumpkin_data$Price
 
-x.train <- model.matrix(Price~., pumpkin_train)[,-1]
-x.test <- model.matrix(Price~., pumpkin_test)[,-1]
+x.train <- model.matrix(Price~., pumpkin_train)[,-4]
+x.test <- model.matrix(Price~., pumpkin_test)[,-4]
 
 y.train <- pumpkin_train$Price
 y.test <- pumpkin_test$Price
