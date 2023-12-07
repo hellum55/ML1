@@ -163,15 +163,15 @@ pumpkin_test <- testing(split)
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors()) %>%
+  step_nzv(all_predictors(), -all_outcomes()) %>%
   step_YeoJohnson(all_outcomes()) %>%
-  step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
-  step_integer(Item.Size, zero_based = T) %>%
+  #step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
+  step_integer(matches("sml|med|med-lge|lge|xlge|jbo|exjbo")) %>%
   step_integer(month, zero_based = T) %>%
   step_integer(year, zero_based = T) %>%
-  step_dummy(all_nominal(), one_hot = TRUE) %>%
-  step_nzv(all_predictors(), -all_outcomes()) %>%
   step_center(all_numeric(), -all_outcomes()) %>%
-  step_scale(all_numeric(), -all_outcomes())
+  step_scale(all_numeric(), -all_outcomes()) %>%
+  step_dummy(all_nominal(), -Item.Size, one_hot = TRUE)
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
 prepare
@@ -235,7 +235,7 @@ cv_model_pcr <- train(
   data = baked_train, 
   method = "pcr",
   trControl = cv,
-  tuneLength = 50,
+  tuneLength = 70,
   metric = "RMSE"
 )
 # model with lowest RMSE
@@ -264,7 +264,7 @@ cv_model_pls <- train(
   data = baked_train, 
   method = "pls",
   trControl = cv,
-  tuneLength = 50,
+  tuneLength = 70,
   metric = "RMSE"
 )
 # model with lowest RMSE
@@ -288,7 +288,7 @@ RMSE_pls
 
 #KNN-regression:
 # Construct grid of hyperparameter values
-hyper_grid <- expand.grid(k = seq(2, 30, by = 1))
+hyper_grid <- expand.grid(k = seq(2, 70, by = 1))
 
 cv_knn_model <- train(
   price~.,      
@@ -330,7 +330,7 @@ RMSE_knn
 
 #Question n:####
 library(vip)
-vip(cv_knn_model, num_features = 24, method = "model")
+p1 <- vip::vip(cv_model_pcr, num_features = 25, bar = FALSE)
 #Of course the package has a huge influence on price. The bigger the package
 #The more expensive. Of course low.price/high.price has a huge influence as well
 #That´s how the price is computed. Maybe one should consider to normalize the price

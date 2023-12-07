@@ -40,6 +40,17 @@ pumpkin_data <- pumpkin_data %>%
          year = year(Date)) %>%
   select(-Date)
 
+pumpkin_data <- pumpkin_data %>%
+  mutate(Item.Size = case_when(
+    Item.Size == 'sml' ~ 0,
+    Item.Size == 'med' ~ 1,
+    Item.Size == 'med-lge' ~ 2,
+    Item.Size == 'lge' ~ 3,
+    Item.Size == 'xlge' ~ 4,
+    Item.Size == 'exjbo' ~ 5,
+    TRUE ~ as.numeric(Item.Size)  # If there are other values, keep them as is (or handle accordingly)
+  ))
+
 pumpkin_data$month <- as.factor(pumpkin_data$month)
 pumpkin_data$year <- as.factor(pumpkin_data$year)
 
@@ -110,7 +121,7 @@ library(glmnet)
 set.seed(123)
 l.grid <- 10^seq(3,-2,length=100)
 
-cv.ridge <- cv.glmnet(X[train, ], y[train],
+cv.ridge <- cv.glmnet(x=x.train, y=y.train,
                       alpha = 0,
                       nfolds = 5,
                       lambda = l.grid,
@@ -135,7 +146,7 @@ ridge_pred <- predict(model_ridge_best, s = bestlam.ridge, newx = x.test)
 n <- length(y.train)  #sample size
 set.seed(123)
 
-cv.lasso <- cv.glmnet(X[train, ], y[train],
+cv.lasso <- cv.glmnet(x.train, y.train,
                       alpha = 1,
                       nfolds = n,
                       lambda = l.grid,
@@ -145,12 +156,12 @@ coef(cv.lasso)
 bestlam.lasso<-cv.lasso$lambda.min
 bestlam.lasso
 
-model_lasso_best <- glmnet(X[train, ], y[train],
+model_lasso_best <- glmnet(x.train, y.train,
                            alpha = 1,
                            lambda = bestlam.lasso,
                            standardize = TRUE)
 
-lasso.pred <- predict(model_lasso_best, s = bestlam.lasso, newx = X[test, ])
+lasso.pred <- predict(model_lasso_best, s = bestlam.lasso, newx = x.test)
 lasso_mse <- mean((lasso.pred - y.test)^2)
 rsq_lasso_cv <- cor(y.test, lasso.pred)^2
 rsq_lasso_cv
