@@ -88,17 +88,20 @@ c(mu - 2*se, mu + 2*se)
 
 #Question g:####
 #get data in (x,y) format (without intercept)
+library(rsample)
+set.seed(1)
 pumpkin_train <- pumpkin_data %>%
   filter(year < 2017)
 
 pumpkin_test <- pumpkin_data %>%
   filter(year == 2017)
 
-x.train <- model.matrix(Price~., pumpkin_train)[,-1]
-x.test <- model.matrix(Price~., pumpkin_test)[,-1]
+x <- model.matrix(Price~., pumpkin_train)[,-4]
+y <- pumpkin_train$Price
 
-y.train <- pumpkin_train$Price
-y.test <- pumpkin_test$Price
+train <- sample(1:nrow(x), nrow(x) * 0.8)
+test <- (-train)
+y.test <- y[test]
 
 #Question h:####
 #First we will predict price using OLS:
@@ -121,7 +124,7 @@ library(glmnet)
 set.seed(123)
 l.grid <- 10^seq(3,-2,length=100)
 
-cv.ridge <- cv.glmnet(x=x.train, y=y.train,
+cv.ridge <- cv.glmnet(x=x[train, ], y=y[train],
                       alpha = 0,
                       nfolds = 5,
                       lambda = l.grid,
@@ -131,12 +134,12 @@ plot(cv.ridge)
 bestlam.ridge <- cv.ridge$lambda.min
 bestlam.ridge
 
-model_ridge_best <- glmnet(x.train, y.train,
+model_ridge_best <- glmnet(x[train, ], y[train],
                            alpha = 0, 
                            lambda = bestlam.ridge,
                            standardize = TRUE)
 
-ridge_pred <- predict(model_ridge_best, s = bestlam.ridge, newx = x.test)
+ridge_pred <- predict(model_ridge_best, s = bestlam.ridge, newx = x[test, ])
 (ridge_mse <- mean((ridge_pred - y.test)^2))
 
 #predict with lasso (LOOCV):
