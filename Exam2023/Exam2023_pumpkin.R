@@ -157,21 +157,18 @@ library(recipes)  # for feature engineering tasks
 library(rsample)
 
 set.seed(123)
-split <- initial_split(pumpkin_data, prop = 0.8, strata = "price") 
+split <- initial_split(pumpkin_data, prop = 0.7, strata = "price") 
 pumpkin_train <- training(split)
 pumpkin_test <- testing(split)
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors()) %>%
+  step_log(all_outcomes()) %>%
   step_nzv(all_predictors(), -all_outcomes()) %>%
-  step_YeoJohnson(all_outcomes()) %>%
-  #step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
-  step_integer(matches("sml|med|med-lge|lge|xlge|jbo|exjbo")) %>%
-  step_integer(month, zero_based = T) %>%
-  step_integer(year, zero_based = T) %>%
-  step_center(all_numeric(), -all_outcomes()) %>%
-  step_scale(all_numeric(), -all_outcomes()) %>%
-  step_dummy(all_nominal(), -Item.Size, one_hot = TRUE)
+  step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
+  step_integer(Item.Size, Variety, Color) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors(), one_hot = T)
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
 prepare
@@ -330,7 +327,7 @@ RMSE_knn
 
 #Question n:####
 library(vip)
-p1 <- vip::vip(cv_model_pcr, num_features = 25, bar = FALSE)
+p1 <- vip::vip(cv_model_pcr, num_features = 58, bar = FALSE)
 #Of course the package has a huge influence on price. The bigger the package
 #The more expensive. Of course low.price/high.price has a huge influence as well
 #That´s how the price is computed. Maybe one should consider to normalize the price
