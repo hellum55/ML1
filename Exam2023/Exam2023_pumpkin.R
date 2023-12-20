@@ -157,18 +157,17 @@ library(recipes)  # for feature engineering tasks
 library(rsample)
 
 set.seed(123)
-split <- initial_split(pumpkin_data, prop = 0.7, strata = "price") 
+split <- initial_split(pumpkin_data, prop = 0.8, strata = "price") 
 pumpkin_train <- training(split)
 pumpkin_test <- testing(split)
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors()) %>%
-  step_log(all_outcomes()) %>%
-  step_nzv(all_predictors(), -all_outcomes()) %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
-  step_integer(Item.Size, Variety, Color) %>%
+  step_integer(Item.Size, Variety, Color, month, year) %>%
+  step_BoxCox(all_numeric(), -Color, -year) %>%
   step_normalize(all_numeric_predictors()) %>%
-  step_dummy(all_nominal_predictors(), one_hot = T)
+  step_nzv(all_predictors())
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
 prepare
@@ -192,7 +191,7 @@ corrplot(corr_mat, method = "shade", shade.col = NA, tl.col = "black",
 cv <- trainControl(
   method = "repeatedcv", 
   number = 10, 
-  repeats = 1)
+  repeats = 2)
 
 cv_model_ols <- train(
   price~.,      
@@ -205,26 +204,6 @@ cv_model_ols
 #  RMSE      Rsquared   MAE    
 # 6.048651  0.7759989  3.636813
 
-# new data (test)
-predictions <- predict(cv_model_ols, baked_test) 
-predictions 
-RMSE_ols = sqrt(sum((baked_test$price - predictions)^2/nrow(baked_test)))
-RMSE_ols
-
-cv_model_lmStepAIC <- train(
-  price~., 
-  data = baked_train, 
-  method = "lmStepAIC", direction="both", # lmStepAIC is a stepwise regression discussed later in the course
-  trControl = trainControl(method = "cv", number = 10)
-)
-summary(cv_model_lmStepAIC)
-
-
-predictions <- predict(cv_model_lmStepAIC, baked_test) 
-predictions 
-RMSE_stepAIC = sqrt(sum((baked_test$price - predictions)^2/nrow(baked_test)))
-RMSE2
-
 #PCR regression
 set.seed(123)
 cv_model_pcr <- train(
@@ -232,7 +211,7 @@ cv_model_pcr <- train(
   data = baked_train, 
   method = "pcr",
   trControl = cv,
-  tuneLength = 70,
+  tuneLength = 55,
   metric = "RMSE"
 )
 # model with lowest RMSE
@@ -248,10 +227,6 @@ cv_model_pcr$results %>%
 # plot cross-validated RMSE
 ggplot(cv_model_pcr)
 
-#new data (test)
-predictions_pcr <- predict(cv_model_pcr, baked_test) 
-RMSE_pcr = sqrt(sum((baked_test$price - predictions_pcr)^2/nrow(baked_test)))
-RMSE_pcr
 
 #PLS regression
 # number of principal components to use as predictors from 1-30
@@ -278,10 +253,6 @@ cv_model_pls$results %>%
 # plot cross-validated RMSE
 ggplot(cv_model_pls)
 
-# new data (test)
-predictions_pls <- predict(cv_model_pls, baked_test) 
-RMSE_pls = sqrt(sum((baked_test$price - predictions_pls)^2/nrow(baked_test)))
-RMSE_pls
 
 #KNN-regression:
 # Construct grid of hyperparameter values
@@ -298,27 +269,19 @@ cv_knn_model <- train(
 cv_knn_model 
 ggplot(cv_knn_model)
 
-# new data (test)
-predictions_knn <- predict(cv_knn_model, baked_test) 
-RMSE_knn = sqrt(sum((baked_test$price - predictions_knn)^2/nrow(baked_test)))
-RMSE_knn
-
 # Question l:####_______________________________
 # Summary of cv-error for the models tested here
 # ______________________________________________
-summary(resamples(list(
+results <- summary(resamples(list(
   model1 = cv_model_ols,
-  #model2 = cv_model_lmStepAIC,
   model3 = cv_model_pcr, 
   model4 = cv_model_pls,
   model5 = cv_knn_model
 )))
 
-summary(results)
-bwplot(results)
-dotplot(results)
 #Question m:####
 # new data (test)
+
 predictions <- predict(cv_knn_model, baked_test) 
 predictions 
 RMSE_knn = sqrt(sum((baked_test$price - predictions)^2/nrow(baked_test)))
@@ -327,13 +290,19 @@ RMSE_knn
 
 #Question n:####
 library(vip)
-p1 <- vip::vip(cv_model_pcr, num_features = 58, bar = FALSE)
+install.packages("tune")
+library(tune)
+p1 <- vip::vip(cv_model_pcr, num_features = 10, bar = FALSE)
+
+cv_model_pcr %>%
+  extract_fit_parsnip() %>%
+  vip(aesthetics = list(fill = "steelblue"), num_features = 10)
 #Of course the package has a huge influence on price. The bigger the package
 #The more expensive. Of course low.price/high.price has a huge influence as well
 #That´s how the price is computed. Maybe one should consider to normalize the price
 #so the price reflects the same unit price. 
 
 library(pdp)
-pdp::partial(cv_model_pls, "Item.Size", grid.resolution = 20, plot = TRUE)
+pdp::partial(cv_model_pcr, "Item.Size", grid.resolution = 20, plot = TRUE)
 
 

@@ -87,21 +87,25 @@ mu <- mean(boot.out$t0)
 c(mu - 2*se, mu + 2*se)
 
 #Question g:####
-#get data in (x,y) format (without intercept)
+#Split the data into different years and then (80/20) train/test.
 library(rsample)
 set.seed(1)
-pumpkin_train <- pumpkin_data %>%
+pumpkin_2016 <- pumpkin_data %>%
   filter(year < 2017)
+rows_2016 <- sample(nrow(pumpkin_2016)*0.8)
+shuffled_2016 <- pumpkin_2016[rows_2016, ]
 
-pumpkin_test <- pumpkin_data %>%
+pumpkin_2017 <- pumpkin_data %>%
   filter(year == 2017)
+rows_2017 <- sample(nrow(pumpkin_2017)*0.8)
+shuffled_2017 <- pumpkin_2017[rows_2017, ]
 
-x <- model.matrix(Price~., pumpkin_train)[,-4]
-y <- pumpkin_train$Price
+#get data in (x,y) format (without intercept)
+x.train <- model.matrix(Price~., shuffled_2016)[,-4]
+y.train <- shuffled_2016$Price
 
-train <- sample(1:nrow(x), nrow(x) * 0.8)
-test <- (-train)
-y.test <- y[test]
+x.test <- model.matrix(Price~., shuffled_2017)[,-4]
+y.test <- shuffled_2017$Price
 
 #Question h:####
 #First we will predict price using OLS:
@@ -124,7 +128,7 @@ library(glmnet)
 set.seed(123)
 l.grid <- 10^seq(3,-2,length=100)
 
-cv.ridge <- cv.glmnet(x=x[train, ], y=y[train],
+cv.ridge <- cv.glmnet(x=x.train, y=y.train,
                       alpha = 0,
                       nfolds = 5,
                       lambda = l.grid,
@@ -134,12 +138,12 @@ plot(cv.ridge)
 bestlam.ridge <- cv.ridge$lambda.min
 bestlam.ridge
 
-model_ridge_best <- glmnet(x[train, ], y[train],
+model_ridge_best <- glmnet(x.train, y.train,
                            alpha = 0, 
                            lambda = bestlam.ridge,
                            standardize = TRUE)
 
-ridge_pred <- predict(model_ridge_best, s = bestlam.ridge, newx = x[test, ])
+ridge_pred <- predict(model_ridge_best, s = bestlam.ridge, newx = x.test)
 (ridge_mse <- mean((ridge_pred - y.test)^2))
 
 #predict with lasso (LOOCV):
