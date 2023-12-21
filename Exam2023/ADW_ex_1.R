@@ -2,16 +2,16 @@ library(writexl)
 write_xlsx(pumpkin_data,"~/ML1/Exam2023\\pumpkintrain.xlsx")
 
 #Question a:####
-library(dplyr)
 pumpkin <- read.csv("~/ML1/Exam2023/US-pumpkins.csv", stringsAsFactors=TRUE,
                     na.strings = c("", " ", "NA", "N/A", ".", "NaN", "MISSING"))
 
 #Question b:####
-str(pumpkin_data)
-dim(pumpkin_data)
-View(pumpkin_data[1:5, ])
+str(pumpkin)
+dim(pumpkin)
+View(pumpkin[1:5, ])
 
 #Question c:####
+library(dplyr)
 pumpkin_data <- pumpkin %>%
   select(-c(X, X.1))
 
@@ -23,6 +23,8 @@ pumpkin_data <- pumpkin_data %>%
           year = year(Date)) %>%
   select(-Date)
 
+#It makes sense to treat the dates as factors rather than numeric features because the data could have been in months like "Jan",
+#"Feb", "Mar" and so on. Treat them as factors:
 pumpkin_data$month <- as.factor(pumpkin_data$month)
 pumpkin_data$year <- as.factor(pumpkin_data$year)
 str(pumpkin_data)
@@ -37,8 +39,8 @@ sum(is.na(pumpkin_data))
 vis_miss(pumpkin_data, cluster = TRUE) #visdat library
 plot_missing(pumpkin_data)
 #Trans.Mode, Crop, Storage, Appearance, Condition, Quality, Environment and Grade have all 100% missing values
-#in this dataset. This means that they have absolutely zero affect on the future predictions, and it is best to
-#drop these variables.
+#in this dataset. This means that they have absolutely zero effect on the future predictions, and it is best to
+#drop these variables since it is rows without a single datapoint. 
 
 pumpkin_data <- pumpkin_data %>%
   select(-c(Trans.Mode, Crop, Storage, Appearance, Condition, Quality, Environment, Grade, Sub.Variety, Unit.of.Sale, Origin.District, Type))
@@ -46,27 +48,15 @@ pumpkin_data <- pumpkin_data %>%
 #Checking for missing values again:
 library (Hmisc)
 plot_missing(pumpkin_data)
+vis_miss(pumpkin_data, cluster = TRUE)
 
-# mutate missing values manually (not needed in this case)
-pumpkin_data <- pumpkin_data %>%
-  mutate(Mostly.High
-         = replace(Mostly.High,
-                   is.na(Mostly.High),
-                   mean(Mostly.High, na.rm = TRUE)),
-         Mostly.Low
-         = replace(Mostly.Low,
-                   is.na(Mostly.Low),
-                   mean(Mostly.Low, na.rm = TRUE)))
 #Two variables Mostly.High and Mostly.low have 5.86% missing values, which is ok in this case. But i will apply
 #knn-imputation because it looks like the prices are in some sort of range. The prices are integer and the
 #imputation should be so.
-
-pumpkin_data$Item.Size <- impute(pumpkin_data$Item.Size)
-pumpkin_data$Color <- impute(pumpkin_data$Color)
-pumpkin_data$Variety <- impute(pumpkin_data$Variety)
-pumpkin_data$Origin <- impute(pumpkin_data$Origin)
-
-plot_missing(pumpkin_data)
+#It seems like the missing values of the coloumns are missing at random. No generally pattern or relationship
+#between the missingness. It is MCAR. If we later on apply mean imputation we do not preserve the realtionshiop between variables.
+#and therefor underestimates SE and making type 1 errors. 
+#The best method might be KNN even though it is a bit heavier on computation time.
 
 #Question f:####
 # Create a new column for average Price
@@ -74,27 +64,11 @@ pumpkin_data <- pumpkin_data %>%
   mutate(price = (Low.Price + High.Price)/2) %>%
   select(-Low.Price, -High.Price, -Mostly.Low, -Mostly.High)
 
-# Retain only pumpkins with the string "bushel"
-#pumpkin_data <- pumpkin_data %>% 
-#  filter(str_detect(string = Package, pattern = "bushel"))
-
-# Normalize the pricing so that you show the pricing per bushel, not per 1 1/9 or 1/2 bushel
-#pumpkin_data <- pumpkin_data %>% 
-#  mutate(price = case_when(
-#    str_detect(Package, "1 1/9") ~ price/(1.1),
-#    str_detect(Package, "1/2") ~ price*2,
-#    TRUE ~ price))
-
-#Check for outliers:
-attach(pumpkin_data)
-plot(month, price, main="Scatterplot Example",
-     xlab="months ", ylab="price ", pch=19) # set number of bins
-
 #Check for appropriate normalization:
 #First checking for the distribution of price without any transformation:
 par(mfrow=c(1,3))
 hist(pumpkin_data$price, breaks = 20, col = "red", border = "red") 
-summary(pumpkin_data$price)
+no_transform <- pumpkin_data$price
 #Highly skewed distribution with almost 400 observations with a price of almost 0 (0.24 as the lowest price). That
 #must be a pumpkin of a very poor quality.
 
@@ -112,7 +86,12 @@ hist(pumpkin_BC, breaks = 20,
      col = "lightblue", border = "lightblue", 
      ylim = c(0, 800))
 
-#The box-cox transformation seems to be the most normalized distribution. The range of the prices are not as
+list(summary(no_transform),
+summary(log_pumpkin),
+summary(pumpkin_BC))
+
+#It is hard to tell which of these normalizations are better, because they are all terrible. 
+#Maybe the log transformation are better. The box-cox transformation seems to be the most normalized distribution. The range of the prices are not as
 #abnormal as with no transformation.
 
 #Question g:####
@@ -120,34 +99,31 @@ library(caret)
 caret::nearZeroVar(pumpkin_data, saveMetrics = TRUE) %>% 
   tibble::rownames_to_column() %>% 
   filter(nzv)
-
-#manually dropping NZV variable (not needed in this case)
-pumpkin_data <- pumpkin_data %>%
-  select(-c(Repack))
-#Later in the recipe variables such as Type, Origin.District and repack will be eliminated. In the whole dataset,
-#these three predictors are classified as near zero variance, but later when the data is split up into train/test
-#or CV/bootstrap.
+#Repack is a near zero variance variable. It makes sense when you have a look at the data. It Is
+#almost the same observation for the whole dataset and thereby does not really help to predict the prices
+#later on.
 
 #Question h:####
 library(ggplot2)
 library(DataExplorer)
 library (GGally)
+#This is a weird question. We have been told to delete almost all numeric features until now.
+#and the only numeric features such as month and year are treated as factors now. So which numeric features are in play?
+#Actually not a single when besides the DP.
 
 str(pumpkin_data)
 pairs(pumpkin_data[,c(4:7, 12:14)])
 ggpairs(pumpkin_data, columns = c(4:7, 12:14))
 
-plot_histogram(pumpkin_data)
-
-pumpkin_data %>%
-  group_by(month) %>% 
-  summarise(price = mean(price)) %>% 
-  ggplot(aes(x = month, y = price)) +
-  geom_col(fill = "midnightblue", alpha = 0.7) +
-  ylab("Pumpkin Price")
-
-
+#Question i:
 plot_bar(pumpkin_data)
+count(pumpkin_data, Origin) %>% arrange(n)
+count(pumpkin_data, Package) %>% arrange(n)
+#We have alredy concluded that Repack should be eliminated due to near zero variance (almost all observations are N). The Year feature
+#Shows that there are a couple of observations from 2014, which we might delete from the dataset beacuse the dataset are supposed to contain
+#only the years 2016 - 2017. Variables such as package and origin we might consider to lump the very few observations.
+#We can benefit from lumping if we lump these few observations into fewer categories. We can try to lump categories into fewer if the observations are
+#are observed less than 5% of the time for the package variable and the origin. 
 
 #Question j:####
 #Splitting the data:
@@ -162,30 +138,24 @@ pumpkin_train <- training(split)
 pumpkin_test <- testing(split)
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
+  step_nzv(all_predictors()) %>%
   step_impute_knn(all_predictors()) %>%
+  step_other(Package, threshold = 0.05, other = "other") %>%
+  step_other(Origin, threshold = 0.05, other = "other") %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
-  step_integer(Item.Size, Variety, Color, month, year) %>%
-  step_BoxCox(all_numeric(), -Color, -year) %>%
-  step_normalize(all_numeric_predictors()) %>%
-  step_nzv(all_predictors())
+  step_integer(Item.Size, Color) %>%
+  step_YeoJohnson(all_numeric()) %>%
+  step_center(all_integer_predictors()) %>%
+  step_scale(all_integer_predictors()) %>%
+  step_dummy(all_nominal_predictors())
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
 prepare
 # bake: apply the recipe to new data (e.g., the training data or future test data) with bake()
 baked_train <- bake(prepare, new_data = pumpkin_train)
 baked_test <- bake(prepare, new_data = pumpkin_test)
-baked_train
-baked_test
-str(pumpkin_train)
-
-#Check for correlation:
-library(corrplot)
-# Obtain correlation matrix
-corr_mat <- cor(baked_train)
-corrplot(corr_mat, method = "shade", shade.col = NA, tl.col = "black",
-         tl.srt = 45, addCoef.col = "black", cl.pos = "n", order = "original")
-
-#Very high correlations between mostly low and mostly high. delete these variables.
+dim(baked_train)
+dim(baked_test)
 
 #Question k:####
 cv <- trainControl(
@@ -202,7 +172,7 @@ cv_model_ols <- train(
 )
 cv_model_ols
 #  RMSE      Rsquared   MAE    
-# 6.048651  0.7759989  3.636813
+# 6.417904  0.7702263  3.821981
 
 #PCR regression
 set.seed(123)
@@ -217,16 +187,20 @@ cv_model_pcr <- train(
 # model with lowest RMSE
 cv_model_pcr$bestTune
 ##    ncomp
-## 27    27
+## 45    45
 
 # results for model with lowest RMSE
 cv_model_pcr$results %>%
   dplyr::filter(ncomp == pull(cv_model_pcr$bestTune))
-##   ncomp     RMSE  Rsquared      MAE   RMSESD RsquaredSD    MAESD
-## 1    25 6.53572 0.7378014 4.229481 0.8922528 0.05922489 0.4612548
+##   ncomp  RMSE  Rsquared   MAE   
+## 1  45 6.355011 0.7730153 3.815941
+
 # plot cross-validated RMSE
 ggplot(cv_model_pcr)
-
+#the plot looks a bit weird. The model with 45 components yield the smallest RMSE
+#but there is not much difference between a model with 5 components and 45. We could benefit
+#from the model with 5 components because it is a simpler model. It looks like it is just a single variable
+#that can explain the prices such as the package size. The bigger the packages the higher the price.
 
 #PLS regression
 # number of principal components to use as predictors from 1-30
@@ -247,12 +221,12 @@ cv_model_pls$bestTune
 # results for model with lowest RMSE
 cv_model_pls$results %>%
   dplyr::filter(ncomp == pull(cv_model_pls$bestTune))
-##   ncomp     RMSE  Rsquared      MAE   RMSESD RsquaredSD   MAESD
-## 1    11 1.531377 0.9857728 0.9651711 0.2396004 0.003704062 0.09061704
+##   ncomp  RMSE    Rsquared  MAE     RMSESD 
+## 1   17 6.346193 0.7736222 3.796518 0.8518485 
 
 # plot cross-validated RMSE
 ggplot(cv_model_pls)
-
+#Kind of the same issue with this one.
 
 #KNN-regression:
 # Construct grid of hyperparameter values
@@ -266,7 +240,10 @@ cv_knn_model <- train(
   tuneGrid = hyper_grid,
   metric = "RMSE"
 )
-cv_knn_model 
+cv_knn_model$finalModel
+#RMSE was used to select the optimal model using the smallest value.
+#The final value used for the model was k = 2.
+
 ggplot(cv_knn_model)
 
 # Question l:####_______________________________
@@ -274,35 +251,29 @@ ggplot(cv_knn_model)
 # ______________________________________________
 results <- summary(resamples(list(
   model1 = cv_model_ols,
-  model3 = cv_model_pcr, 
-  model4 = cv_model_pls,
-  model5 = cv_knn_model
+  model2 = cv_model_pcr, 
+  model3 = cv_model_pls,
+  model4 = cv_knn_model
 )))
+results
+#The model with lowest RMSE and highest R^2 is the knn-model
 
 #Question m:####
 # new data (test)
-
 predictions <- predict(cv_knn_model, baked_test) 
 predictions 
 RMSE_knn = sqrt(sum((baked_test$price - predictions)^2/nrow(baked_test)))
 RMSE_knn
-#3.396111 RMSE
+#the predicted RMSE on the testset is: 4.087517 RMSE which is actually lower than
+#the in-sample test. hmm....?
 
 #Question n:####
 library(vip)
-install.packages("tune")
-library(tune)
-p1 <- vip::vip(cv_model_pcr, num_features = 10, bar = FALSE)
-
-cv_model_pcr %>%
-  extract_fit_parsnip() %>%
-  vip(aesthetics = list(fill = "steelblue"), num_features = 10)
+vip(cv_model_pls, num_features = 10, geom = "point")
 #Of course the package has a huge influence on price. The bigger the package
-#The more expensive. Of course low.price/high.price has a huge influence as well
-#That´s how the price is computed. Maybe one should consider to normalize the price
-#so the price reflects the same unit price. 
+#The more expensive. We should consider to transform the packages so it is actually in the same unit or same size. 
+#We dont even need a model to predict a price point because it is common sense that if the package is bigger the pumpkin
+#is more expensive. 
 
-library(pdp)
-pdp::partial(cv_model_pcr, "Item.Size", grid.resolution = 20, plot = TRUE)
-
-
+#Question o:####
+#Clean dirty data

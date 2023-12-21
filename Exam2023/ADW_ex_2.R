@@ -1,7 +1,7 @@
 #Question a:####
-library(dplyr)
 pumpkin <- read.csv("~/ML1/Exam2023/US-pumpkins.csv", stringsAsFactors=TRUE)
 
+library(dplyr)
 pumpkin_data <- pumpkin %>%
   select(c(City.Name, Variety, Date, Low.Price, High.Price, Item.Size))
 
@@ -11,13 +11,7 @@ pumpkin_data <- pumpkin_data %>%
          Spread = 5+(High.Price-Low.Price)) %>%
   select(-c(Low.Price, High.Price))
 
-par(mfrow=c(1,2))
-hist(pumpkin_data$Price, breaks = 20, col = "red", border = "red") 
-hist(pumpkin_data$Spread, breaks = 20, col = "blue", border = "blue") 
-
 library(ggplot2)
-
-
 # Basic density
 #Price
 par(mfrow=c(2,2))
@@ -32,6 +26,11 @@ ggplot(pumpkin_data, aes(x=Spread)) +
   geom_histogram(aes(y=..density..), colour="black", fill="white")+
   geom_density(alpha=.2, fill="#FF6666")
 
+#The distribution of the price is indeed not normal distributed. The plot shows two peaks around
+#the lower values and a peak again at 175-200 price-point. The spread-plot shows one huge peak at the start
+#around 5-10 ish. And then small peaks but it is very skewed to the right. The mean is less than the median.
+#The one big difference is in the amount of peaks. There is one outlier in the spread plot.
+
 #Question c:####
 library(tidyverse)
 pumpkin_data <- pumpkin_data %>%
@@ -39,17 +38,6 @@ pumpkin_data <- pumpkin_data %>%
          month = month(Date),
          year = year(Date)) %>%
   select(-Date)
-
-pumpkin_data <- pumpkin_data %>%
-  mutate(Item.Size = case_when(
-    Item.Size == 'sml' ~ 0,
-    Item.Size == 'med' ~ 1,
-    Item.Size == 'med-lge' ~ 2,
-    Item.Size == 'lge' ~ 3,
-    Item.Size == 'xlge' ~ 4,
-    Item.Size == 'exjbo' ~ 5,
-    TRUE ~ as.numeric(Item.Size)  # If there are other values, keep them as is (or handle accordingly)
-  ))
 
 pumpkin_data$month <- as.factor(pumpkin_data$month)
 pumpkin_data$year <- as.factor(pumpkin_data$year)
@@ -62,8 +50,10 @@ pumpkin_data <- na.omit(pumpkin_data)
 AdjPrice <- median(pumpkin_data$Price*pumpkin_data$Spread)/mean(pumpkin_data$Spread)
 
 std_adj <- sqrt(sum((pumpkin_data$Price - AdjPrice)^2) / (1473-1))
-
 se <- std_adj/sqrt(1473)
+#It is not an accurate estimate without resampling as in a bootstrap. But we are able to
+#compute an estimate though, but the accuracy is questionable and we concluded before that
+#the distribution of spread and price are not normally distributed.
 
 #Question f:####
 library(boot)
@@ -79,12 +69,24 @@ AdjPrice.fn(pumpkin_data, sample(1:1473, 1473, replace = TRUE))
 boot.out=boot(data=pumpkin_data, statistic=AdjPrice.fn, R=1000)
 boot.out
 plot(boot.out)
+#The bootsrap is used to tell the uncertainty given an estimator or a method. For example a SE
+#of spread or a confidence interval for that. We simulate this process a 1000 times to estimate the SD
+#so we can compute SE. 
+
+
+#These are the results:
+
+#    original    bias    std. error
+#t1* 64.04122 0.7116221    2.772582
+
 
 #95% confidensinterval
 se <- sd(boot.out$t)
 mu <- mean(boot.out$t0)
 
 c(mu - 2*se, mu + 2*se)
+
+se*sqrt(1473)
 
 #Question g:####
 #Split the data into different years and then (80/20) train/test.
