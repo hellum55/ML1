@@ -90,3 +90,15 @@ for (i in 0:10) {
   results <- rbind(results, temp)
 }
 results
+
+model_ridge_best <- glmnet(x[train, ], y[train],
+                           alpha = 0, 
+                           lambda = bestlam.ridge,
+                           standardize = TRUE)
+
+
+
+model_lasso_best <- glmnet(x[train, ], y[train],
+                           alpha = 1,
+                           lambda = bestlam.lasso,
+                           standardize = TRUE)

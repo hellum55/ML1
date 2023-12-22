@@ -45,6 +45,7 @@ pumpkin_data$year <- as.factor(pumpkin_data$year)
 #Question d:####
 pumpkin_data[pumpkin_data==""] <- NA
 pumpkin_data <- na.omit(pumpkin_data)
+sum(is.na(pumpkin_data))
 
 #Question e:###
 AdjPrice <- median(pumpkin_data$Price*pumpkin_data$Spread)/mean(pumpkin_data$Spread)
@@ -53,7 +54,10 @@ std_adj <- sqrt(sum((pumpkin_data$Price - AdjPrice)^2) / (1473-1))
 se <- std_adj/sqrt(1473)
 #It is not an accurate estimate without resampling as in a bootstrap. But we are able to
 #compute an estimate though, but the accuracy is questionable and we concluded before that
-#the distribution of spread and price are not normally distributed.
+#the distribution of spread and price are not normally distributed, which is a must for this type
+#of computation. That's why we can apply bootstrapping so we can make a normal distribution out of the
+#sample means. I dont think there is a formula for SD of a median value. This is why we can apply bootstrapping.
+
 
 #Question f:####
 library(boot)
@@ -90,56 +94,57 @@ se*sqrt(1473)
 #Question g:####
 #Split the data into different years and then (70/30) train/test. And remove obs. with few observations
 library(DataExplorer)
-library (GGally)
 pumpkin_data <- pumpkin_data %>%
   group_by(year, month, City.Name) %>%
-  filter(n() / nrow(.) >= 0.01) %>%
+  filter(n() / nrow(.) >= 0.02) %>%
   ungroup()
 
 plot_bar(pumpkin_data)
   
 library(rsample)
-x <- model.matrix(Price~.,pumpkin_data)[, -1] 
+x <- model.matrix(Price~.,pumpkin_data)[, -1]
 y <- pumpkin_data$Price
 
-set.seed (1)
+#decreasing lambda grid from 1000 to 0.01
+l.grid <- 10^seq(10, -2, length = 100)
+
+set.seed (185)
 train <- sample(1:nrow(x), nrow(x) * 0.7) 
 test <- (-train)
 y.test <- y[test]
+
 #Question h:####
 #First we will predict price using OLS:
-reg.lm<-lm(Price~., data = pumpkin_data[train, ])
-summary(reg.lm)
-lm.pred = predict(reg.lm, pumpkin_data[test, ])
-ols_mse <- mean((lm.pred - pumpkin_data[test, ]$Price)^2)
+reg.lm <- glmnet(x[train, ], y[train], alpha = 0,
+                 lambda = l.grid, thresh = 1e-12)
+
+lm.pred <- predict(reg.lm, s = 0, exact = T, type = "coefficients",
+                  x=x[train, ], y=y[train])
+
+ols.mse <- mean((lm.pred-y.test)^2)
 ols_mse
 
 #Predict with Ridge-reg with 5-fold cv:
-#Call the glm function with alpha=0
-
-#decreasing lambda grid from 1000 to 0.01
 #install.packages("glmnet")
 library(caret)
 library(glmnet)
 set.seed(123)
-l.grid <- 10^seq(10, -2, length = 100)
-
 cv.ridge <- cv.glmnet(x=x[train, ], y=y[train],
                       alpha = 0,
                       nfolds = 5,
                       lambda = l.grid,
-                      standardize = TRUE)
+                      thresh=1e-12)
 
 plot(cv.ridge)
+#It seems like the full model does a good job
+
 bestlam.ridge <- cv.ridge$lambda.min
 bestlam.ridge
+#The lamda that results in the smallest CV-error is 4.64. Lets see what the RMSE is, asscoiated with this lambda
 
-model_ridge_best <- glmnet(x[train, ], y[train],
-                           alpha = 0, 
-                           lambda = bestlam.ridge,
-                           standardize = TRUE)
-
-ridge_pred <- predict(model_ridge_best, s = bestlam.ridge, newx = x[test, ])
+ridge_pred <- predict(cv.ridge, s = bestlam.ridge, newx = x[test, ])
+(rmse_ridge = sqrt(apply((y.test-ridge_pred)^2,2,mean)))
+#Results in a RMSE of 53.53
 ridge_mse <- mean((ridge_pred - y.test)^2)
 ridge_mse
 
@@ -152,18 +157,19 @@ cv.lasso <- cv.glmnet(x[train, ], y[train],
                       alpha = 1,
                       nfolds = n,
                       lambda = l.grid,
-                      standardize = TRUE)
+                      thresh=1e-12)
 plot(cv.lasso)
 coef(cv.lasso)
 bestlam.lasso<-cv.lasso$lambda.min
-bestlam.lasso
+coef(cv.lasso)
+#The best model with lasso takes around 14 parameters. So it is a simpler model than ridge but,
+#does not perform better than ridge, but slightly better than OLS.
 
-model_lasso_best <- glmnet(x[train, ], y[train],
-                           alpha = 1,
-                           lambda = bestlam.lasso,
-                           standardize = TRUE)
-
-lasso.pred <- predict(model_lasso_best, s = bestlam.lasso, newx = x[test, ])
+lasso.pred <- predict(cv.lasso, s = bestlam.lasso, newx = x[test, ])
+dim(lasso.pred)
+(rmse = sqrt(apply((y.test-lasso.pred)^2,2,mean)))
+plot_lasso_lambda <- cv.lasso$lambda[order(rmse)]
+plot_lasso_lambda
 lasso_mse <- mean((lasso.pred - y.test)^2)
 lasso_mse
 
@@ -185,16 +191,6 @@ city_month_pred <- predict(model_city_month, pumpkin_data[test, ])
 city_month_mse <- mean((city_month_pred - y.test)^2)
 
 data.frame(method = c("OLS", "Ridge", "Lasso", "Intercept", "City", "month","City+month"), 
-           test_MSE = c(ols_mse, ridge_mse, lasso_mse, intercept_mse, city.name_mse, month_mse, city_month_mse), 
-           test_R2 = c(cor(y.test, lm.pred)^2,
-                       cor(y.test, ridge_pred)^2, 
-                       cor(y.test, lasso.pred)^2, 
-                       cor(y.test, intercept_pred)^2, 
-                       cor(y.test, city.name_pred)^2,
-                       cor(y.test, month_pred)^2,
-                       cor(y.test, city_month_pred)^2)) %>%
+           test_MSE = c(ols_mse, ridge_mse, lasso_mse, intercept_mse, city.name_mse, month_mse, city_month_mse))
 arrange(test_MSE)
-
-
-
 

@@ -1,5 +1,5 @@
 library(writexl)
-write_xlsx(pumpkin_data,"~/ML1/Exam2023\\pumpkintrain.xlsx")
+write_csv(pumpkin_data,"~/ML1/Exam2023\\pumpkintrain.csv")
 
 #Question a:####
 pumpkin <- read.csv("~/ML1/Exam2023/US-pumpkins.csv", stringsAsFactors=TRUE,
@@ -119,6 +119,13 @@ ggpairs(pumpkin_data, columns = c(4:7, 12:14))
 plot_bar(pumpkin_data)
 count(pumpkin_data, Origin) %>% arrange(n)
 count(pumpkin_data, Package) %>% arrange(n)
+
+#check to see if the LR assumptions are fullfilled.
+test_lm <- lm(formula = log_pumpkin ~ Package+Item.Size+City.Name+Variety+Origin+Color+month+year, data = pumpkin_data)
+summary(test_lm)
+par(mfrow=c(2,2))
+plot(test_lm)
+
 #We have alredy concluded that Repack should be eliminated due to near zero variance (almost all observations are N). The Year feature
 #Shows that there are a couple of observations from 2014, which we might delete from the dataset beacuse the dataset are supposed to contain
 #only the years 2016 - 2017. Variables such as package and origin we might consider to lump the very few observations.
@@ -133,7 +140,7 @@ library(recipes)  # for feature engineering tasks
 library(rsample)
 
 set.seed(123)
-split <- initial_split(pumpkin_data, prop = 0.8, strata = "price") 
+split <- initial_split(pumpkin_data, prop = 0.7, strata = "price") 
 pumpkin_train <- training(split)
 pumpkin_test <- testing(split)
 
@@ -164,8 +171,8 @@ cv <- trainControl(
   repeats = 2)
 
 cv_model_ols <- train(
-  price~.,      
-  data = baked_train, 
+  pumpkin_recipe,      
+  data = pumpkin_train, 
   method = "lm", 
   trControl = cv, 
   metric = "RMSE"
@@ -173,12 +180,13 @@ cv_model_ols <- train(
 cv_model_ols
 #  RMSE      Rsquared   MAE    
 # 6.417904  0.7702263  3.821981
+plot(cv_model_ols$finalModel)
 
 #PCR regression
 set.seed(123)
 cv_model_pcr <- train(
-  price~., 
-  data = baked_train, 
+  pumpkin_recipe, 
+  data = pumpkin_train, 
   method = "pcr",
   trControl = cv,
   tuneLength = 55,
@@ -197,6 +205,7 @@ cv_model_pcr$results %>%
 
 # plot cross-validated RMSE
 ggplot(cv_model_pcr)
+summary(cv_model_pcr)
 #the plot looks a bit weird. The model with 45 components yield the smallest RMSE
 #but there is not much difference between a model with 5 components and 45. We could benefit
 #from the model with 5 components because it is a simpler model. It looks like it is just a single variable
@@ -206,8 +215,8 @@ ggplot(cv_model_pcr)
 # number of principal components to use as predictors from 1-30
 set.seed(123)
 cv_model_pls <- train(
-  price~., 
-  data = baked_train, 
+  pumpkin_recipe, 
+  data = pumpkin_train, 
   method = "pls",
   trControl = cv,
   tuneLength = 70,
@@ -230,17 +239,17 @@ ggplot(cv_model_pls)
 
 #KNN-regression:
 # Construct grid of hyperparameter values
-hyper_grid <- expand.grid(k = seq(2, 70, by = 1))
+hyper_grid <- expand.grid(k = seq(2, 48, by = 1))
 
 cv_knn_model <- train(
-  price~.,      
-  data = baked_train, 
+  pumpkin_recipe,      
+  data = pumpkin_train, 
   method = "knn", 
   trControl = cv, 
   tuneGrid = hyper_grid,
   metric = "RMSE"
 )
-cv_knn_model$finalModel
+cv_knn_model
 #RMSE was used to select the optimal model using the smallest value.
 #The final value used for the model was k = 2.
 
@@ -260,9 +269,9 @@ results
 
 #Question m:####
 # new data (test)
-predictions <- predict(cv_knn_model, baked_test) 
+predictions <- predict(cv_knn_model, pumpkin_test) 
 predictions 
-RMSE_knn = sqrt(sum((baked_test$price - predictions)^2/nrow(baked_test)))
+RMSE_knn = sqrt(sum((pumpkin_test$price - predictions)^2/nrow(pumpkin_test)))
 RMSE_knn
 #the predicted RMSE on the testset is: 4.087517 RMSE which is actually lower than
 #the in-sample test. hmm....?
