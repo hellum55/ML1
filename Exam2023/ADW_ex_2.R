@@ -115,7 +115,7 @@ y.test <- y[test]
 
 #Question h:####
 #First we will predict price using OLS:
-reg.lm <- glmnet(x[train, ], y[train], alpha = 0,
+reg.lm <- glmnet(x=x[train, ], y[train], alpha = 0,
                  lambda = l.grid, thresh = 1e-12)
 
 lm.pred <- predict(reg.lm, s = 0, exact = T, type = "coefficients",
@@ -140,9 +140,13 @@ plot(cv.ridge)
 
 bestlam.ridge <- cv.ridge$lambda.min
 bestlam.ridge
+
+mod.ridge <- glmnet(x[train, ], y[train], alpha = 0,
+                    lambda = bestlam.ridge)
 #The lamda that results in the smallest CV-error is 4.64. Lets see what the RMSE is, asscoiated with this lambda
 
-ridge_pred <- predict(cv.ridge, s = bestlam.ridge, newx = x[test, ])
+ridge_pred <- predict(mod.ridge, newx = x[test, ])
+
 (rmse_ridge = sqrt(apply((y.test-ridge_pred)^2,2,mean)))
 #Results in a RMSE of 53.53
 ridge_mse <- mean((ridge_pred - y.test)^2)
@@ -158,18 +162,17 @@ cv.lasso <- cv.glmnet(x[train, ], y[train],
                       nfolds = n,
                       lambda = l.grid,
                       thresh=1e-12)
-plot(cv.lasso)
-coef(cv.lasso)
+
 bestlam.lasso<-cv.lasso$lambda.min
 coef(cv.lasso)
 #The best model with lasso takes around 14 parameters. So it is a simpler model than ridge but,
 #does not perform better than ridge, but slightly better than OLS.
+mod.lasso <- glmnet(x[train, ], y[train], alpha = 1,
+                    lambda = bestlam.lasso)
 
-lasso.pred <- predict(cv.lasso, s = bestlam.lasso, newx = x[test, ])
-dim(lasso.pred)
+lasso.pred <- predict(mod.lasso, s = bestlam.lasso, newx = x[test, ])
+
 (rmse = sqrt(apply((y.test-lasso.pred)^2,2,mean)))
-plot_lasso_lambda <- cv.lasso$lambda[order(rmse)]
-plot_lasso_lambda
 lasso_mse <- mean((lasso.pred - y.test)^2)
 lasso_mse
 

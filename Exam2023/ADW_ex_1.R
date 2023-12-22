@@ -145,16 +145,16 @@ pumpkin_train <- training(split)
 pumpkin_test <- testing(split)
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
-  step_nzv(all_predictors()) %>%
   step_impute_knn(all_predictors()) %>%
-  step_other(Package, threshold = 0.05, other = "other") %>%
-  step_other(Origin, threshold = 0.05, other = "other") %>%
+  step_other(Package, threshold = 0.1, other = "other") %>%
+  step_other(Origin, threshold = 0.1, other = "other") %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
-  step_integer(Item.Size, Color) %>%
-  step_YeoJohnson(all_numeric()) %>%
+  step_integer(Item.Size) %>%
+  step_BoxCox(all_outcomes()) %>%
   step_center(all_integer_predictors()) %>%
-  step_scale(all_integer_predictors()) %>%
-  step_dummy(all_nominal_predictors())
+  step_scale(all_integer(), -all_outcomes()) %>%
+  step_dummy(all_nominal_predictors(), one_hot = FALSE) %>%
+  step_nzv(all_predictors(), -all_outcomes())
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
 prepare
@@ -167,8 +167,8 @@ dim(baked_test)
 #Question k:####
 cv <- trainControl(
   method = "repeatedcv", 
-  number = 10, 
-  repeats = 2)
+  number = 5, 
+  repeats = 1)
 
 cv_model_ols <- train(
   pumpkin_recipe,      
@@ -185,11 +185,11 @@ plot(cv_model_ols$finalModel)
 #PCR regression
 set.seed(123)
 cv_model_pcr <- train(
-  pumpkin_recipe, 
-  data = pumpkin_train, 
+  price~., 
+  data = baked_train, 
   method = "pcr",
   trControl = cv,
-  tuneLength = 55,
+  tuneLength = 30,
   metric = "RMSE"
 )
 # model with lowest RMSE
@@ -219,7 +219,7 @@ cv_model_pls <- train(
   data = pumpkin_train, 
   method = "pls",
   trControl = cv,
-  tuneLength = 70,
+  tuneLength = 30,
   metric = "RMSE"
 )
 # model with lowest RMSE
@@ -239,11 +239,11 @@ ggplot(cv_model_pls)
 
 #KNN-regression:
 # Construct grid of hyperparameter values
-hyper_grid <- expand.grid(k = seq(2, 48, by = 1))
+hyper_grid <- expand.grid(k = seq(2, 30, by = 1))
 
 cv_knn_model <- train(
-  pumpkin_recipe,      
-  data = pumpkin_train, 
+  price~.,      
+  data = baked_train, 
   method = "knn", 
   trControl = cv, 
   tuneGrid = hyper_grid,
@@ -269,16 +269,19 @@ results
 
 #Question m:####
 # new data (test)
-predictions <- predict(cv_knn_model, pumpkin_test) 
+predictions <- predict(cv_knn_model, baked_test) 
 predictions 
-RMSE_knn = sqrt(sum((pumpkin_test$price - predictions)^2/nrow(pumpkin_test)))
+price_BC <- forecast::BoxCox(pumpkin_test$price, lambda="auto") 
+RMSE_knn = sqrt(mean(price_BC - predictions)^2)
 RMSE_knn
-#the predicted RMSE on the testset is: 4.087517 RMSE which is actually lower than
+
+#the predicted RMSE on the testset is: 19.43 RMSE which is way higher than
 #the in-sample test. hmm....?
 
 #Question n:####
 library(vip)
 vip(cv_model_pls, num_features = 10, geom = "point")
+vip::vip(cv_knn_model, method = "model")
 #Of course the package has a huge influence on price. The bigger the package
 #The more expensive. We should consider to transform the packages so it is actually in the same unit or same size. 
 #We dont even need a model to predict a price point because it is common sense that if the package is bigger the pumpkin
