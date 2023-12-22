@@ -79,7 +79,6 @@ plot(boot.out)
 #    original    bias    std. error
 #t1* 64.04122 0.7116221    2.772582
 
-
 #95% confidensinterval
 se <- sd(boot.out$t)
 mu <- mean(boot.out$t0)
@@ -89,36 +88,31 @@ c(mu - 2*se, mu + 2*se)
 se*sqrt(1473)
 
 #Question g:####
-#Split the data into different years and then (80/20) train/test.
+#Split the data into different years and then (70/30) train/test. And remove obs. with few observations
+library(DataExplorer)
+library (GGally)
+pumpkin_data <- pumpkin_data %>%
+  group_by(year, month, City.Name) %>%
+  filter(n() / nrow(.) >= 0.01) %>%
+  ungroup()
+
+plot_bar(pumpkin_data)
+  
 library(rsample)
-set.seed(1)
-pumpkin_2016 <- pumpkin_data %>%
-  filter(year < 2017)
-rows_2016 <- sample(nrow(pumpkin_2016)*0.8)
-shuffled_2016 <- pumpkin_2016[rows_2016, ]
+x <- model.matrix(Price~.,pumpkin_data)[, -1] 
+y <- pumpkin_data$Price
 
-pumpkin_2017 <- pumpkin_data %>%
-  filter(year == 2017)
-rows_2017 <- sample(nrow(pumpkin_2017)*0.8)
-shuffled_2017 <- pumpkin_2017[rows_2017, ]
-
-#get data in (x,y) format (without intercept)
-x.train <- model.matrix(Price~., shuffled_2016)[,-4]
-y.train <- shuffled_2016$Price
-
-x.test <- model.matrix(Price~., shuffled_2017)[,-4]
-y.test <- shuffled_2017$Price
-
+set.seed (1)
+train <- sample(1:nrow(x), nrow(x) * 0.7) 
+test <- (-train)
+y.test <- y[test]
 #Question h:####
 #First we will predict price using OLS:
-reg.lm<-lm(Price~., data = pumpkin_train)
+reg.lm<-lm(Price~., data = pumpkin_data[train, ])
 summary(reg.lm)
-lm.pred = predict(reg.lm, pumpkin_test)
-(ols_mse <- mean((lm.pred - pumpkin_test$Price)^2))
-
-rsq_reg_lm <- cor(y.test, lm.pred)^2
-rsq_reg_lm
-RMSE1
+lm.pred = predict(reg.lm, pumpkin_data[test, ])
+ols_mse <- mean((lm.pred - pumpkin_data[test, ]$Price)^2)
+ols_mse
 
 #Predict with Ridge-reg with 5-fold cv:
 #Call the glm function with alpha=0
@@ -128,9 +122,9 @@ RMSE1
 library(caret)
 library(glmnet)
 set.seed(123)
-l.grid <- 10^seq(3,-2,length=100)
+l.grid <- 10^seq(10, -2, length = 100)
 
-cv.ridge <- cv.glmnet(x=x.train, y=y.train,
+cv.ridge <- cv.glmnet(x=x[train, ], y=y[train],
                       alpha = 0,
                       nfolds = 5,
                       lambda = l.grid,
@@ -140,22 +134,21 @@ plot(cv.ridge)
 bestlam.ridge <- cv.ridge$lambda.min
 bestlam.ridge
 
-model_ridge_best <- glmnet(x.train, y.train,
+model_ridge_best <- glmnet(x[train, ], y[train],
                            alpha = 0, 
                            lambda = bestlam.ridge,
                            standardize = TRUE)
 
-ridge_pred <- predict(model_ridge_best, s = bestlam.ridge, newx = x.test)
-(ridge_mse <- mean((ridge_pred - y.test)^2))
+ridge_pred <- predict(model_ridge_best, s = bestlam.ridge, newx = x[test, ])
+ridge_mse <- mean((ridge_pred - y.test)^2)
+ridge_mse
 
 #predict with lasso (LOOCV):
 #default alpha value is 1 which gives a lasso model
-
 #LOOCV using cv.glmnet
-n <- length(y.train)  #sample size
+n <- length(y[train])  #sample size
 set.seed(123)
-
-cv.lasso <- cv.glmnet(x.train, y.train,
+cv.lasso <- cv.glmnet(x[train, ], y[train],
                       alpha = 1,
                       nfolds = n,
                       lambda = l.grid,
@@ -165,63 +158,41 @@ coef(cv.lasso)
 bestlam.lasso<-cv.lasso$lambda.min
 bestlam.lasso
 
-model_lasso_best <- glmnet(x.train, y.train,
+model_lasso_best <- glmnet(x[train, ], y[train],
                            alpha = 1,
                            lambda = bestlam.lasso,
                            standardize = TRUE)
 
-lasso.pred <- predict(model_lasso_best, s = bestlam.lasso, newx = x.test)
+lasso.pred <- predict(model_lasso_best, s = bestlam.lasso, newx = x[test, ])
 lasso_mse <- mean((lasso.pred - y.test)^2)
-rsq_lasso_cv <- cor(y.test, lasso.pred)^2
-rsq_lasso_cv
-
-list.of.fits <- list()
-for (i in 0:10) {
-  fit.name <- paste0("alpha", i/10)
-  
-  list.of.fits[[fit.name]] <-
-    cv.glmnet(x.train, y.train, type.measure = "mse", alpha=i/10)
-}
-
-results <- data.frame()
-for (i in 0:10) {
-  fit.name <- paste0("alpha", i/10)
-  
-  predicted <- 
-    predict(list.of.fits[[fit.name]],
-            s=list.of.fits[[fit.name]]$lambda.min, newx = x.test)
-  
-  mse <- mean((y.test-predicted)^2)
-  
-  temp <- data.frame(alpha=i/10, mse=mse, fit.name=fit.name)
-  results <- rbind(results, temp)
-}
-results
+lasso_mse
 
 #Question i:####
-fit.0v <- lm(Price ~ City.Name, data = pumpkin_train)
-v0_pred <- predict(fit.0v, pumpkin_test)
-v0_mse <- mean((v0_pred - y.test)^2)
+intercept_only <- lm(formula = Price ~ 1, data = pumpkin_data[train, ])
+intercept_pred <- predict(intercept_only, pumpkin_data[test, ])
+intercept_mse <- mean((intercept_pred - y.test)^2)
 
-fit.1v <- lm(Price ~ month, data = pumpkin_train)
-v1_pred <- predict(fit.1v, pumpkin_test)
-v1_mse <- mean((v1_pred - y.test)^2)
+model_city.name <- lm(Price ~ City.Name, data = pumpkin_data[train, ])
+city.name_pred <- predict(model_city.name, pumpkin_data[test, ])
+city.name_mse <- mean((city.name_pred - y.test)^2)
 
-fit.2v <- lm(Price ~ City.Name+month, data = pumpkin_train)
-v2_pred <- predict(fit.2v, pumpkin_test)
-v2_mse <- mean((v2_pred - pumpkin_test$Price)^2)
-v2_mse
+model.month <- lm(Price ~ month, data = pumpkin_data[train, ])
+month_pred <- predict(model.month, pumpkin_data[test, ])
+month_mse <- mean((month_pred - y.test)^2)
 
-SS_tot <- sum((y.test - mean(y.test))^2)
+model_city_month <- lm(Price ~ City.Name+month, data = pumpkin_data[train, ])
+city_month_pred <- predict(model_city_month, pumpkin_data[test, ])
+city_month_mse <- mean((city_month_pred - y.test)^2)
 
-data.frame(method = c("OLS", "Ridge", "Lasso", "v0", "v1", "v2"), 
-           test_MSE = c(ols_mse, ridge_mse, lasso_mse, v1_mse, v1_mse, v2_mse), 
+data.frame(method = c("OLS", "Ridge", "Lasso", "Intercept", "City", "month","City+month"), 
+           test_MSE = c(ols_mse, ridge_mse, lasso_mse, intercept_mse, city.name_mse, month_mse, city_month_mse), 
            test_R2 = c(cor(y.test, lm.pred)^2,
                        cor(y.test, ridge_pred)^2, 
                        cor(y.test, lasso.pred)^2, 
-                       cor(y.test, v0_pred)^2, 
-                       cor(y.test, v1_pred)^2,
-                       cor(y.test, v2_pred)^2)) %>%
+                       cor(y.test, intercept_pred)^2, 
+                       cor(y.test, city.name_pred)^2,
+                       cor(y.test, month_pred)^2,
+                       cor(y.test, city_month_pred)^2)) %>%
 arrange(test_MSE)
 
 

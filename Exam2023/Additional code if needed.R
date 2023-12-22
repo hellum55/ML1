@@ -50,3 +50,43 @@ pumpkin_data <- pumpkin_data %>%
     Item.Size == 'exjbo' ~ 5,
     TRUE ~ as.numeric(Item.Size)  # If there are other values, keep them as is (or handle accordingly)
   ))
+
+pumpkin_2016 <- pumpkin_data %>%
+  filter(year < 2017)
+rows_2016 <- sample(nrow(pumpkin_2016)*0.8)
+shuffled_2016 <- pumpkin_2016[rows_2016, ]
+
+pumpkin_2017 <- pumpkin_data %>%
+  filter(year == 2017)
+rows_2017 <- sample(nrow(pumpkin_2017)*0.8)
+shuffled_2017 <- pumpkin_2017[rows_2017, ]
+
+#get data in (x,y) format (without intercept)
+x.train <- model.matrix(Price~., shuffled_2016)[,-4]
+y.train <- shuffled_2016$Price
+
+x.test <- model.matrix(Price~., shuffled_2017)[,-4]
+y.test <- shuffled_2017$Price
+
+list.of.fits <- list()
+for (i in 0:10) {
+  fit.name <- paste0("alpha", i/10)
+  
+  list.of.fits[[fit.name]] <-
+    cv.glmnet(x.train, y.train, type.measure = "mse", alpha=i/10)
+}
+
+results <- data.frame()
+for (i in 0:10) {
+  fit.name <- paste0("alpha", i/10)
+  
+  predicted <- 
+    predict(list.of.fits[[fit.name]],
+            s=list.of.fits[[fit.name]]$lambda.min, newx = x.test)
+  
+  mse <- mean((y.test-predicted)^2)
+  
+  temp <- data.frame(alpha=i/10, mse=mse, fit.name=fit.name)
+  results <- rbind(results, temp)
+}
+results
