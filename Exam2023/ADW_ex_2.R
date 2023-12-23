@@ -112,17 +112,15 @@ set.seed (185)
 train <- sample(1:nrow(x), nrow(x) * 0.7) 
 test <- (-train)
 y.test <- y[test]
+pumpkin_test <- pumpkin_data[test, ]
 
 #Question h:####
 #First we will predict price using OLS:
-reg.lm <- glmnet(x=x[train, ], y[train], alpha = 0,
-                 lambda = l.grid, thresh = 1e-12)
-
-lm.pred <- predict(reg.lm, s = 0, exact = T, type = "coefficients",
-                  x=x[train, ], y=y[train])
-
+reg.lm<-lm(Price~., pumpkin_data[train, ])
+lm.pred <- predict(reg.lm, newdata = pumpkin_data[test,])
+lm.pred
 ols.mse <- mean((lm.pred-y.test)^2)
-ols_mse
+ols.mse
 
 #Predict with Ridge-reg with 5-fold cv:
 #install.packages("glmnet")

@@ -145,15 +145,15 @@ pumpkin_train <- training(split)
 pumpkin_test <- testing(split)
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
-  step_impute_knn(all_predictors()) %>%
+  step_impute_knn(all_predictors(), neighbors = 6) %>%
+  step_BoxCox(price) %>%
   step_other(Package, threshold = 0.1, other = "other") %>%
   step_other(Origin, threshold = 0.1, other = "other") %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
   step_integer(Item.Size) %>%
-  step_BoxCox(all_outcomes()) %>%
   step_center(all_integer_predictors()) %>%
   step_scale(all_integer(), -all_outcomes()) %>%
-  step_dummy(all_nominal_predictors(), one_hot = FALSE) %>%
+  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
   step_nzv(all_predictors(), -all_outcomes())
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
@@ -167,25 +167,25 @@ dim(baked_test)
 #Question k:####
 cv <- trainControl(
   method = "repeatedcv", 
-  number = 5, 
+  number = 10, 
   repeats = 1)
 
 cv_model_ols <- train(
-  pumpkin_recipe,      
-  data = pumpkin_train, 
+  (price)~.,      
+  data = baked_train, 
   method = "lm", 
   trControl = cv, 
   metric = "RMSE"
 )
 cv_model_ols
 #  RMSE      Rsquared   MAE    
-# 6.417904  0.7702263  3.821981
+# 6.00154  0.7541309  3.581401
 plot(cv_model_ols$finalModel)
 
 #PCR regression
 set.seed(123)
 cv_model_pcr <- train(
-  price~., 
+  (price)~., 
   data = baked_train, 
   method = "pcr",
   trControl = cv,
@@ -195,13 +195,13 @@ cv_model_pcr <- train(
 # model with lowest RMSE
 cv_model_pcr$bestTune
 ##    ncomp
-## 45    45
+## 23    23
 
 # results for model with lowest RMSE
 cv_model_pcr$results %>%
   dplyr::filter(ncomp == pull(cv_model_pcr$bestTune))
 ##   ncomp  RMSE  Rsquared   MAE   
-## 1  45 6.355011 0.7730153 3.815941
+## 1  23 5.958849 0.7537162 3.552391
 
 # plot cross-validated RMSE
 ggplot(cv_model_pcr)
@@ -215,8 +215,8 @@ summary(cv_model_pcr)
 # number of principal components to use as predictors from 1-30
 set.seed(123)
 cv_model_pls <- train(
-  pumpkin_recipe, 
-  data = pumpkin_train, 
+  (price)~., 
+  data = baked_train, 
   method = "pls",
   trControl = cv,
   tuneLength = 30,
@@ -225,13 +225,13 @@ cv_model_pls <- train(
 # model with lowest RMSE
 cv_model_pls$bestTune
 ##    ncomp
-## 17    17
+## 11    11
 
 # results for model with lowest RMSE
 cv_model_pls$results %>%
   dplyr::filter(ncomp == pull(cv_model_pls$bestTune))
 ##   ncomp  RMSE    Rsquared  MAE     RMSESD 
-## 1   17 6.346193 0.7736222 3.796518 0.8518485 
+## 1   12 5.934838 0.7568023 3.542692 0.8717315
 
 # plot cross-validated RMSE
 ggplot(cv_model_pls)
@@ -242,7 +242,7 @@ ggplot(cv_model_pls)
 hyper_grid <- expand.grid(k = seq(2, 30, by = 1))
 
 cv_knn_model <- train(
-  price~.,      
+  (price)~.,      
   data = baked_train, 
   method = "knn", 
   trControl = cv, 
@@ -278,6 +278,7 @@ RMSE_knn
 #the predicted RMSE on the testset is: 19.43 RMSE which is way higher than
 #the in-sample test. hmm....?
 
+
 #Question n:####
 library(vip)
 vip(cv_model_pls, num_features = 10, geom = "point")
@@ -288,4 +289,105 @@ vip::vip(cv_knn_model, method = "model")
 #is more expensive. 
 
 #Question o:####
-#Clean dirty data
+#Clean dirty data. First of all i would recommend to deal with the data in the same unit because the package variable has very high importance in estimating CV-error.
+#Otherwise get rid of the very small values like 0.2 in the price variable because they are often sold as just one pumpkin. There are also a couple of very high prices we could try to get rid off.
+#so the distribution are more normally distributed or atlest when we try to transform it.
+#Checking for outliers:
+
+predictions_train <- predict(cv_model_pls, baked_train) 
+residuals_train = pumpkin_train$price - exp(predictions_train)
+plot(residuals_train)
+
+df <- data.frame(actual = pumpkin_train$price, predicted = exp(predictions_train), residuals_train)
+df[which.max(df$residuals_train),] 
+pumpkin_train[1182,] 
+#The above could be removed because it is an outlier and can be noisy regarding the analysis. The package is the type 'each' which means the 
+#package contains one pumpkin. In this category the pumpkins are often very low in price like 0.2 - 3 dollars. This observation are more than 100x
+#the usual price for a pumpkin in the 'each' category. Therefor, remove it!
+
+#Remove row 1182:
+pumpkin_train <- pumpkin_train[-(1182:1186);, ]
+
+library(gridExtra)   
+# 1. histogram, Q-Q plot, and boxplot
+par(mfrow = c(1, 3))
+hist(pumpkin_train$price, main = "Histogram")
+boxplot(pumpkin_train$price, main = "Boxplot")
+qqnorm(pumpkin_train$price, main = "Normal Q-Q plot")
+
+# 2. Mean and SD
+# get mean and standard deviation
+mean = mean(pumpkin_train$price)
+std = sd(pumpkin_train$price)
+
+# get threshold values for outliers
+Tmin = mean-(3*std)
+Tmax = mean+(3*std)
+
+# find outliers
+pumpkin_train$price[which(pumpkin_train$price < Tmin | pumpkin_train$price > Tmax)]
+# [1] 400 400 440 480 440 440
+
+# remove outliers
+pumpkin_train$price[which(pumpkin_train$price > Tmin & pumpkin_train$price < Tmax)]
+
+pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
+  step_impute_knn(all_predictors(), neighbors = 6) %>%
+  step_BoxCox(price) %>%
+  step_other(Package, threshold = 0.1, other = "other") %>%
+  step_other(Origin, threshold = 0.1, other = "other") %>%
+  step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
+  step_integer(Item.Size) %>%
+  step_center(all_integer_predictors()) %>%
+  step_scale(all_integer(), -all_outcomes()) %>%
+  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
+  step_nzv(all_predictors(), -all_outcomes())
+
+prepare <- prep(pumpkin_recipe, training = pumpkin_train)
+prepare
+# bake: apply the recipe to new data (e.g., the training data or future test data) with bake()
+baked_train <- bake(prepare, new_data = pumpkin_train)
+baked_test <- bake(prepare, new_data = pumpkin_test)
+
+#PLS regression
+# number of principal components to use as predictors from 1-30
+set.seed(123)
+cv_modified_pls <- train(
+  (price)~., 
+  data = baked_train, 
+  method = "pls",
+  trControl = cv,
+  tuneLength = 30,
+  metric = "RMSE"
+)
+# model with lowest RMSE
+cv_modified_pls$bestTune
+##    ncomp
+## 13   13
+
+# results for model with lowest RMSE
+cv_modified_pls$results %>%
+  dplyr::filter(ncomp == pull(cv_modified_pls$bestTune))
+##   ncomp  RMSE    Rsquared  MAE     RMSESD 
+## 1   13 5.325916 0.8007857 3.372133 0.5948893
+
+# plot cross-validated RMSE
+ggplot(cv_modified_pls)
+#Kind of the same issue with this one.
+
+#KNN-regression:
+# Construct grid of hyperparameter values
+hyper_grid <- expand.grid(k = seq(2, 30, by = 1))
+
+cv_knn_modified <- train(
+  (price)~.,      
+  data = baked_train, 
+  method = "knn", 
+  trControl = cv, 
+  tuneGrid = hyper_grid,
+  metric = "RMSE"
+)
+cv_knn_modified
+#RMSE was used to select the optimal model using the smallest value.
+#The final value used for the model was k = 2.
+
