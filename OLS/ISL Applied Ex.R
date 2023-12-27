@@ -169,8 +169,11 @@
       lm.fit <- lm(mpg ~ .-name, data = Auto)
       summary(lm.fit)
       # Comment on the output.
-      # i) F-statistic rveals that..
-      # ii) displacement, weigh, year, origin ...
+      # i) Yes, there is a relatioship between the predictors and the response by testing
+      #the null hypothesis of whether all the regression coefficients are zero. The F
+      #-statistic is far from 1 (with a small p-value), indicating evidence against
+      #the null hypothesis.
+      # ii) displacement, weigh, year, origin have a significant relationship when looking at their t-statistic.
       # iii) 0.750773 can be interpreted as ...
       plot(year, mpg)
       
@@ -193,7 +196,6 @@
       # Concl.: the decrease in RSS is substantial for M2, so the interaction term 
       # is justified statistically. 
       # repeat the above two lines by trying other interaction effects 
-      
       
       # (f) transformation of the predictors 
       plot(Auto$mpg, Auto$horsepower)
@@ -290,10 +292,11 @@
         (2+1)/nrow(Carseats)
         # We can see that there are a few leverage points which are significantly 
         # higher than the average leverage.
-           
+        plot(predict(mulreg_price), rstudent(mulreg_price))   
+        
         # ** 
         # Collinearity check: corr matrix, VIF 
-        # cor(Carseats[, -c(7, 10, 11)], method = c("pearson"))
+        cor(Carseats[, -c(7, 10, 11)], method = c("pearson"))
         library(car)
         vif(mulreg_price)
         #**
@@ -594,6 +597,7 @@
           # plot the coef minus de intercept
           plot(slm_coeffs, coef(lm.fit)[-1], xlab="Simple Regression Coef.", ylab="Multiple Regression Coef.") 
          
+          install.packages('calibrate')
           library(calibrate)
           textxy(slm_coeffs, coef(lm.fit)[-1], names(Boston[-1])) # add the labels
           # Concl. Here you will see the (bad) effect of collinearity, 
