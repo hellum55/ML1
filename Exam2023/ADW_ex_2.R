@@ -43,15 +43,22 @@ pumpkin_data$month <- as.factor(pumpkin_data$month)
 pumpkin_data$year <- as.factor(pumpkin_data$year)
 
 #Question d:####
+library(DataExplorer)
+plot_missing(pumpkin_data)
 pumpkin_data[pumpkin_data==""] <- NA
 pumpkin_data <- na.omit(pumpkin_data)
 sum(is.na(pumpkin_data))
 
 #Question e:###
-AdjPrice <- median(pumpkin_data$Price*pumpkin_data$Spread)/mean(pumpkin_data$Spread)
+AdjPrice=function(Price,Spread){
+  median_ps=median(pumpkin_data$Price*pumpkin_data$Spread)
+  mean_s=mean(pumpkin_data$Spread)
+  median_ps/mean_s
+}
+aprice <- AdjPrice(pumpkin_data$Price, pumpkin_data$Spread)
 
-std_adj <- sqrt(sum((pumpkin_data$Price - AdjPrice)^2) / (1473-1))
-se <- std_adj/sqrt(1473)
+std_adj <- sqrt(sum((pumpkin_data$Price - aprice)^2) / (1473-1))
+se_pop <- std_adj/sqrt(1473)
 #It is not an accurate estimate without resampling as in a bootstrap. But we are able to
 #compute an estimate though, but the accuracy is questionable and we concluded before that
 #the distribution of spread and price are not normally distributed, which is a must for this type
@@ -68,6 +75,8 @@ AdjPrice.fn<-function(data, index){
   median(Price*Spread)/mean(Spread)
 }
 
+AdjPrice.fn(pumpkin_data,1:1473)
+
 AdjPrice.fn(pumpkin_data, sample(1:1473, 1473, replace = TRUE))
 
 boot.out=boot(data=pumpkin_data, statistic=AdjPrice.fn, R=1000)
@@ -77,26 +86,28 @@ plot(boot.out)
 #of spread or a confidence interval for that. We simulate this process a 1000 times to estimate the SD
 #so we can compute SE. 
 
-
 #These are the results:
 
 #    original    bias    std. error
 #t1* 64.04122 0.7116221    2.772582
 
 #95% confidensinterval
-se <- sd(boot.out$t)
+se_boot <- sd(boot.out$t)
 mu <- mean(boot.out$t0)
 
 c(mu - 2*se, mu + 2*se)
 
-se*sqrt(1473)
+#The point estimate of the adjusted price are 64.041 which is the same as the population i computed before. The standard error of the bootsrap
+#is 2.68 which is not very much when the mean is 64. The bootstrap statistics are very accurate and can predict the population parameter
+#very precisely. The histogram shows that the distribution is normal we can therefor trust the bootstrap results. 
+#The bias isnt very high and is centered t the true value. 
 
 #Question g:####
-#Split the data into different years and then (70/30) train/test. And remove obs. with few observations
+#Split the data into different years and remove obs. with few observations
 library(DataExplorer)
 pumpkin_data <- pumpkin_data %>%
   group_by(year, month, City.Name) %>%
-  filter(n() / nrow(.) >= 0.02) %>%
+  filter(n() / nrow(.) >= 0.01) %>%
   ungroup()
 
 plot_bar(pumpkin_data)
@@ -127,24 +138,20 @@ ols.mse
 library(caret)
 library(glmnet)
 set.seed(123)
+mod.ridge <- glmnet(x[train, ], y[train], alpha = 0,
+                    lambda = l.grid, tresh = 1e-12)
+plot(mod.ridge)
+
 cv.ridge <- cv.glmnet(x=x[train, ], y=y[train],
                       alpha = 0,
-                      nfolds = 5,
-                      lambda = l.grid,
-                      thresh=1e-12)
-
+                      nfolds = 5)
 plot(cv.ridge)
 #It seems like the full model does a good job
-
 bestlam.ridge <- cv.ridge$lambda.min
 bestlam.ridge
+#The lamda that results in the smallest CV-error is 6.45. Lets see what the RMSE is, associated with this lambda
 
-mod.ridge <- glmnet(x[train, ], y[train], alpha = 0,
-                    lambda = bestlam.ridge)
-#The lamda that results in the smallest CV-error is 4.64. Lets see what the RMSE is, asscoiated with this lambda
-
-ridge_pred <- predict(mod.ridge, newx = x[test, ])
-
+ridge_pred <- predict(mod.ridge, newx = x[test, ], s=bestlam.ridge)
 (rmse_ridge = sqrt(apply((y.test-ridge_pred)^2,2,mean)))
 #Results in a RMSE of 53.53
 ridge_mse <- mean((ridge_pred - y.test)^2)
@@ -155,18 +162,18 @@ ridge_mse
 #LOOCV using cv.glmnet
 n <- length(y[train])  #sample size
 set.seed(123)
+mod.lasso <- glmnet(x[train, ], y[train], alpha = 1,
+                    lambda = l.grid, thresh = 1e-12)
+plot(mod.lasso)
+
 cv.lasso <- cv.glmnet(x[train, ], y[train],
                       alpha = 1,
-                      nfolds = n,
-                      lambda = l.grid,
-                      thresh=1e-12)
+                      nfolds = n)
 
 bestlam.lasso<-cv.lasso$lambda.min
 coef(cv.lasso)
 #The best model with lasso takes around 14 parameters. So it is a simpler model than ridge but,
 #does not perform better than ridge, but slightly better than OLS.
-mod.lasso <- glmnet(x[train, ], y[train], alpha = 1,
-                    lambda = bestlam.lasso)
 
 lasso.pred <- predict(mod.lasso, s = bestlam.lasso, newx = x[test, ])
 
@@ -192,6 +199,6 @@ city_month_pred <- predict(model_city_month, pumpkin_data[test, ])
 city_month_mse <- mean((city_month_pred - y.test)^2)
 
 data.frame(method = c("OLS", "Ridge", "Lasso", "Intercept", "City", "month","City+month"), 
-           test_MSE = c(ols_mse, ridge_mse, lasso_mse, intercept_mse, city.name_mse, month_mse, city_month_mse))
+           test_MSE = c(ols.mse, ridge_mse, lasso_mse, intercept_mse, city.name_mse, month_mse, city_month_mse))
 arrange(test_MSE)
 
