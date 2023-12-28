@@ -120,17 +120,30 @@ plot_bar(pumpkin_data)
 count(pumpkin_data, Origin) %>% arrange(n)
 count(pumpkin_data, Package) %>% arrange(n)
 
-#check to see if the LR assumptions are fullfilled.
-test_lm <- lm(formula = log_pumpkin ~ Package+Item.Size+City.Name+Variety+Origin+Color+month+year, data = pumpkin_data)
-summary(test_lm)
-par(mfrow=c(2,2))
-plot(test_lm)
-
 #We have alredy concluded that Repack should be eliminated due to near zero variance (almost all observations are N). The Year feature
 #Shows that there are a couple of observations from 2014, which we might delete from the dataset beacuse the dataset are supposed to contain
 #only the years 2016 - 2017. Variables such as package and origin we might consider to lump the very few observations.
 #We can benefit from lumping if we lump these few observations into fewer categories. We can try to lump categories into fewer if the observations are
 #are observed less than 5% of the time for the package variable and the origin. 
+
+#Lets have a quick look at the assumptions:
+test_lm <- lm(price~ City.Name+Package+Variety+Origin+Item.Size+Color+month+year, data = pumpkin_data)
+summary(test_lm)
+#Actually quite a good prediction model just with a regular MLP. R2 of .86 with a p-value very low and a F-statistic
+#that deviates from 0 significantly. 
+#Lets plot it:
+par(mfrow=c(2,2))
+plot(test_lm)    
+#The residuals vs the fitted values shows a very linear relationship, but there are couple of observations that differs form the line. The Q-Q residuals plot
+#Shows a normal distribution in the middle of the plot but both in the start and in the end they differs a lot. It is the same values as before. There is a pattern in
+#the third plot wiht some kind of V-shape, but the rest of the observations looks random. So heteroscesdacity. Fourth plot shows the same observations with large std. residual
+#Lets get rid of observation 1452, 1093 and 1095:
+pumpkin_data[1452,]
+pumpkin_data[1093,]
+pumpkin_data[1095,]
+pumpkin_data_test <- pumpkin_data[-(1452), ]
+pumpkin_data_test <- pumpkin_data_test[-(1093), ]
+pumpkin_data_test <- pumpkin_data_test[-(1095), ]
 
 #Question j:####
 #Splitting the data:
@@ -140,19 +153,19 @@ library(recipes)  # for feature engineering tasks
 library(rsample)
 
 set.seed(123)
-split <- initial_split(pumpkin_data, prop = 0.7, strata = "price") 
+split <- initial_split(pumpkin_data_test, prop = 0.7, strata = "price") 
 pumpkin_train <- training(split)
 pumpkin_test <- testing(split)
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors(), neighbors = 6) %>%
-  step_BoxCox(price) %>%
+  step_log(all_outcomes()) %>%
   step_other(Package, threshold = 0.1, other = "other") %>%
   step_other(Origin, threshold = 0.1, other = "other") %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
   step_integer(Item.Size) %>%
-  step_center(all_integer_predictors()) %>%
-  step_scale(all_integer(), -all_outcomes()) %>%
+  #step_center(all_integer_predictors()) %>%
+  #step_scale(all_integer(), -all_outcomes()) %>%
   step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
   step_nzv(all_predictors(), -all_outcomes())
 
@@ -179,7 +192,7 @@ cv_model_ols <- train(
 )
 cv_model_ols
 #  RMSE      Rsquared   MAE    
-# 6.00154  0.7541309  3.581401
+# 0.6744625  0.6987416  0.3448641
 plot(cv_model_ols$finalModel)
 
 #PCR regression
@@ -195,13 +208,13 @@ cv_model_pcr <- train(
 # model with lowest RMSE
 cv_model_pcr$bestTune
 ##    ncomp
-## 23    23
+## 24    24
 
 # results for model with lowest RMSE
 cv_model_pcr$results %>%
   dplyr::filter(ncomp == pull(cv_model_pcr$bestTune))
 ##   ncomp  RMSE  Rsquared   MAE   
-## 1  23 5.958849 0.7537162 3.552391
+## 1  24 5.792629 0.774706 3.493293
 
 # plot cross-validated RMSE
 ggplot(cv_model_pcr)
@@ -225,24 +238,26 @@ cv_model_pls <- train(
 # model with lowest RMSE
 cv_model_pls$bestTune
 ##    ncomp
-## 11    11
+## 13   13
 
 # results for model with lowest RMSE
 cv_model_pls$results %>%
   dplyr::filter(ncomp == pull(cv_model_pls$bestTune))
 ##   ncomp  RMSE    Rsquared  MAE     RMSESD 
-## 1   12 5.934838 0.7568023 3.542692 0.8717315
+## 1   13 5.797741 0.7743082 3.501573 1.142346
 
 # plot cross-validated RMSE
 ggplot(cv_model_pls)
-#Kind of the same issue with this one.
+#Quite a weird looking graph. The difference between 2-3 components and 13 or 20 components are not really that different. One would argue that the simpler
+#model are more beneficial because the model are less complex and easier to interpret and computational faster. If the gain from a more complex model is this small.
+#Then pick the less complex model.
 
 #KNN-regression:
 # Construct grid of hyperparameter values
 hyper_grid <- expand.grid(k = seq(2, 30, by = 1))
 
 cv_knn_model <- train(
-  (price)~.,      
+  price~.,      
   data = baked_train, 
   method = "knn", 
   trControl = cv, 
@@ -251,7 +266,8 @@ cv_knn_model <- train(
 )
 cv_knn_model
 #RMSE was used to select the optimal model using the smallest value.
-#The final value used for the model was k = 2.
+#The final value used for the model was k = 2. wiht a RMSE of 4.17 and R2 of 87 which is pretty impressive, but there could be a problem here. It choice the
+#model with k=2 as the best model and the problem might be overfitting the data. The bias is low, but variance might be high. Lets see:
 
 ggplot(cv_knn_model)
 
@@ -269,15 +285,11 @@ results
 
 #Question m:####
 # new data (test)
+library(Metrics)
 predictions <- predict(cv_knn_model, baked_test) 
-predictions 
-price_BC <- forecast::BoxCox(pumpkin_test$price, lambda="auto") 
-RMSE_knn = sqrt(mean(price_BC - predictions)^2)
-RMSE_knn
-
+rmse(log(pumpkin_test$price), predictions)
 #the predicted RMSE on the testset is: 19.43 RMSE which is way higher than
 #the in-sample test. hmm....?
-
 
 #Question n:####
 library(vip)
@@ -294,19 +306,22 @@ vip::vip(cv_knn_model, method = "model")
 #so the distribution are more normally distributed or atlest when we try to transform it.
 #Checking for outliers:
 
-predictions_train <- predict(cv_model_pls, baked_train) 
-residuals_train = pumpkin_train$price - exp(predictions_train)
+#First, let us look at the assumptions in general for the whole dataset. It looks like there might be some complications in the full dataset that leads to high variance
+#especially for the knn-model. Lets check outliers without any feature engineering:
+
+predictions_train <- predict(cv_knn_model, baked_train) 
+residuals_train = log(pumpkin_train$price) - exp(predictions_train)
 plot(residuals_train)
 
-df <- data.frame(actual = pumpkin_train$price, predicted = exp(predictions_train), residuals_train)
+df <- data.frame(actual = log(pumpkin_train$price), predicted = exp(predictions_train), residuals_train)
 df[which.max(df$residuals_train),] 
-pumpkin_train[1182,] 
+pumpkin_train[1209,] 
 #The above could be removed because it is an outlier and can be noisy regarding the analysis. The package is the type 'each' which means the 
 #package contains one pumpkin. In this category the pumpkins are often very low in price like 0.2 - 3 dollars. This observation are more than 100x
 #the usual price for a pumpkin in the 'each' category. Therefor, remove it!
 
 #Remove row 1182:
-pumpkin_train <- pumpkin_train[-(1182:1186);, ]
+pumpkin_train <- pumpkin_train[-(1209), ]
 
 library(gridExtra)   
 # 1. histogram, Q-Q plot, and boxplot
@@ -333,13 +348,13 @@ pumpkin_train$price[which(pumpkin_train$price > Tmin & pumpkin_train$price < Tma
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors(), neighbors = 6) %>%
-  step_BoxCox(price) %>%
+  step_log(all_outcomes()) %>%
   step_other(Package, threshold = 0.1, other = "other") %>%
   step_other(Origin, threshold = 0.1, other = "other") %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
   step_integer(Item.Size) %>%
-  step_center(all_integer_predictors()) %>%
-  step_scale(all_integer(), -all_outcomes()) %>%
+  #step_center(all_integer_predictors()) %>%
+  #step_scale(all_integer(), -all_outcomes()) %>%
   step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
   step_nzv(all_predictors(), -all_outcomes())
 
@@ -349,36 +364,7 @@ prepare
 baked_train <- bake(prepare, new_data = pumpkin_train)
 baked_test <- bake(prepare, new_data = pumpkin_test)
 
-#PLS regression
-# number of principal components to use as predictors from 1-30
 set.seed(123)
-cv_modified_pls <- train(
-  (price)~., 
-  data = baked_train, 
-  method = "pls",
-  trControl = cv,
-  tuneLength = 30,
-  metric = "RMSE"
-)
-# model with lowest RMSE
-cv_modified_pls$bestTune
-##    ncomp
-## 13   13
-
-# results for model with lowest RMSE
-cv_modified_pls$results %>%
-  dplyr::filter(ncomp == pull(cv_modified_pls$bestTune))
-##   ncomp  RMSE    Rsquared  MAE     RMSESD 
-## 1   13 5.325916 0.8007857 3.372133 0.5948893
-
-# plot cross-validated RMSE
-ggplot(cv_modified_pls)
-#Kind of the same issue with this one.
-
-#KNN-regression:
-# Construct grid of hyperparameter values
-hyper_grid <- expand.grid(k = seq(2, 30, by = 1))
-
 cv_knn_modified <- train(
   (price)~.,      
   data = baked_train, 
@@ -388,6 +374,15 @@ cv_knn_modified <- train(
   metric = "RMSE"
 )
 cv_knn_modified
-#RMSE was used to select the optimal model using the smallest value.
-#The final value used for the model was k = 2.
+#New metrics: 
+#k   RMSE       Rsquared   MAE      
+#2  0.3865875  0.8925568  0.1355119
+
+#Old metrics:
+#k   RMSE       Rsquared   MAE      
+#2  0.4219436  0.8597167  0.1437527
+
+#When removing the outliers in training data we have a better model when estimating on the training data. Lets try on the test data:
+predictions <- predict(cv_knn_model, baked_test) 
+rmse(log(pumpkin_test$price), predictions)
 
