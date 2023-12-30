@@ -159,7 +159,6 @@ pumpkin_test <- testing(split)
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors(), neighbors = 6) %>%
-  step_log(all_outcomes()) %>%
   step_other(Package, threshold = 0.02, other = "other") %>%
   step_other(Origin, threshold = 0.02, other = "other") %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
@@ -192,7 +191,7 @@ cv_model_ols <- train(
 )
 cv_model_ols
 #  RMSE      Rsquared   MAE    
-# 0.6744625  0.6987416  0.3448641
+# 44.35128  0.7401948  28.88014
 plot(cv_model_ols$finalModel)
 
 #PCR regression
@@ -214,7 +213,7 @@ cv_model_pcr$bestTune
 cv_model_pcr$results %>%
   dplyr::filter(ncomp == pull(cv_model_pcr$bestTune))
 ##   ncomp  RMSE  Rsquared   MAE   
-## 1  33 0.6704092 0.7040155 0.3330458
+## 1  33 44.39553 0.7367208 28.92166
 
 # plot cross-validated RMSE
 ggplot(cv_model_pcr)
@@ -243,8 +242,8 @@ cv_model_pls$bestTune
 # results for model with lowest RMSE
 cv_model_pls$results %>%
   dplyr::filter(ncomp == pull(cv_model_pls$bestTune))
-##   ncomp  RMSE    Rsquared  MAE     RMSESD 
-## 1   17 0.6703446 0.7040273 0.332997
+##   ncomp  RMSE    Rsquared  MAE 
+## 1   17 44.39351 0.7367227 28.8711
 
 # plot cross-validated RMSE
 ggplot(cv_model_pls)
@@ -254,8 +253,8 @@ ggplot(cv_model_pls)
 
 #KNN-regression:
 # Construct grid of hyperparameter values
+set.seed(123)
 hyper_grid <- expand.grid(k = seq(2, 30, by = 1))
-
 cv_knn_model <- train(
   price~.,      
   data = baked_train, 
@@ -287,7 +286,7 @@ results
 # new data (test)
 library(Metrics)
 predictions <- predict(cv_knn_model, baked_test) 
-rmse(log(pumpkin_test$price), predictions)
+rmse(pumpkin_test$price, predictions)
 # 0.36 RMSE test-error
 
 #Question n:####
@@ -308,18 +307,20 @@ vip::vip(cv_knn_model, method = "model")
 #First, let us look at the assumptions in general for the whole dataset. It looks like there might be some complications in the full dataset that leads to high variance
 #especially for the knn-model. Lets check outliers without any feature engineering:
 
-predictions_train <- predict(cv_knn_model, baked_train) 
-residuals_train = log(pumpkin_train$price) - exp(predictions_train)
+predictions_train <- predict(cv_knn_model, baked_train)
+residuals_train = pumpkin_train$price - predictions_train
+#residuals_train = log(pumpkin_train$price) - exp(predictions_train)
 plot(residuals_train)
 
-df <- data.frame(actual = log(pumpkin_train$price), predicted = exp(predictions_train), residuals_train)
+df <- data.frame(actual = pumpkin_train$price, predicted = predictions_train, residuals_train)
+#df <- data.frame(actual = log(pumpkin_train$price), predicted = exp(predictions_train), residuals_train)
 df[which.max(df$residuals_train),] 
 pumpkin_train[1174,] 
 #The above could be removed because it is an outlier and can be noisy regarding the analysis. The package is the type 'each' which means the 
 #package contains one pumpkin. In this category the pumpkins are often very low in price like 0.2 - 3 dollars. This observation are more than 100x
 #the usual price for a pumpkin in the 'each' category. Therefor, remove it!
 
-#Remove row 1182:
+#Remove row 1174:
 pumpkin_train <- pumpkin_train[-(1174), ]
 
 library(gridExtra)   
@@ -347,7 +348,6 @@ pumpkin_train$price[which(pumpkin_train$price > Tmin & pumpkin_train$price < Tma
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors(), neighbors = 6) %>%
-  step_log(all_outcomes()) %>%
   step_other(Package, threshold = 0.02, other = "other") %>%
   step_other(Origin, threshold = 0.02, other = "other") %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
@@ -375,13 +375,13 @@ cv_knn_modified <- train(
 cv_knn_modified
 #New metrics: 
 #k   RMSE       Rsquared   MAE      
-#2  0.4006522  0.8895522  0.1386972
+#2  36.42616  0.8239715  14.52783
 
 #Old metrics:
 #k   RMSE       Rsquared   MAE      
-#2  0.4219436  0.8597167  0.1437527
+#2  36.47115  0.8218209  14.50838
 
 #When removing the outliers in training data we have a better model when estimating on the training data. Lets try on the test data:
 predictions <- predict(cv_knn_modified, baked_test) 
-rmse(log(pumpkin_test$price), predictions)
+rmse(pumpkin_test$price, predictions)
 

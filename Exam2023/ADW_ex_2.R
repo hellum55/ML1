@@ -149,7 +149,7 @@ bestlam.ridge <- cv.ridge$lambda.min
 bestlam.ridge
 #The lambda that results in the smallest CV-error is 5.88. Lets see what the RMSE is, associated with this lambda
 
-ridge_pred <- predict(mod.ridge, newx = x[test, ], s=bestlam.ridge)
+ridge_pred <- predict(cv.ridge, newx = x[test, ], s=bestlam.ridge)
 (rmse_ridge = sqrt(apply((y.test-ridge_pred)^2,2,mean)))
 #Results in a RMSE of 53.53
 ridge_mse <- mean((ridge_pred - y.test)^2)
@@ -174,7 +174,7 @@ coef(cv.lasso)
 #The best model with lasso takes around 14 parameters. So it is a simpler model than ridge but,
 #does not perform better than ridge, but slightly better than OLS.
 
-lasso.pred <- predict(mod.lasso, s = bestlam.lasso, newx = x[test, ])
+lasso.pred <- predict(cv.lasso, s = bestlam.lasso, newx = x[test, ])
 
 (rmse = sqrt(apply((y.test-lasso.pred)^2,2,mean)))
 lasso_mse <- mean((lasso.pred - y.test)^2)
@@ -201,3 +201,11 @@ data.frame(method = c("OLS", "Ridge", "Lasso", "Intercept", "City", "month","Cit
            test_MSE = c(ols.mse, ridge_mse, lasso_mse, intercept_mse, city.name_mse, month_mse, city_month_mse))
 arrange(test_MSE)
 
+cor(lm.pred, ridge_pred)
+cor(lm.pred, lasso.pred)
+
+#The lasso model does a slightly better job than OLS and Ridge. The number of predictors P are not significantly large compared to sample size.
+#The lasso model performs variable reduction and can cut out noisy variables which the OLS model still uses, but the lasso model
+#only cut off 10(ish) variables which is not much. Therefor the gain is not huge compared to the two other models.
+#In the last part there is a sign of forward stepwise selection. First the intercept and then the best variables are connected to the model.
+#We can see that the model with only one variable performs worse than the two variable at the same time.
