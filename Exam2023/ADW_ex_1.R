@@ -120,7 +120,7 @@ plot_bar(pumpkin_data)
 count(pumpkin_data, Origin) %>% arrange(n)
 count(pumpkin_data, Package) %>% arrange(n)
 
-#We have alredy concluded that Repack should be eliminated due to near zero variance (almost all observations are N). The Year feature
+#We have already concluded that Repack should be eliminated due to near zero variance (almost all observations are N). The Year feature
 #Shows that there are a couple of observations from 2014, which we might delete from the dataset beacuse the dataset are supposed to contain
 #only the years 2016 - 2017. Variables such as package and origin we might consider to lump the very few observations.
 #We can benefit from lumping if we lump these few observations into fewer categories. We can try to lump categories into fewer if the observations are
@@ -160,13 +160,13 @@ pumpkin_test <- testing(split)
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors(), neighbors = 6) %>%
   step_log(all_outcomes()) %>%
-  step_other(Package, threshold = 0.1, other = "other") %>%
-  step_other(Origin, threshold = 0.1, other = "other") %>%
+  step_other(Package, threshold = 0.02, other = "other") %>%
+  step_other(Origin, threshold = 0.02, other = "other") %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
   step_integer(Item.Size) %>%
   #step_center(all_integer_predictors()) %>%
   #step_scale(all_integer(), -all_outcomes()) %>%
-  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
+  step_dummy(all_nominal_predictors(), one_hot = T) %>%
   step_nzv(all_predictors(), -all_outcomes())
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
@@ -202,19 +202,19 @@ cv_model_pcr <- train(
   data = baked_train, 
   method = "pcr",
   trControl = cv,
-  tuneLength = 30,
+  tuneLength = 35,
   metric = "RMSE"
 )
 # model with lowest RMSE
 cv_model_pcr$bestTune
 ##    ncomp
-## 24    24
+## 33   33
 
 # results for model with lowest RMSE
 cv_model_pcr$results %>%
   dplyr::filter(ncomp == pull(cv_model_pcr$bestTune))
 ##   ncomp  RMSE  Rsquared   MAE   
-## 1  24 5.792629 0.774706 3.493293
+## 1  33 0.6704092 0.7040155 0.3330458
 
 # plot cross-validated RMSE
 ggplot(cv_model_pcr)
@@ -232,19 +232,19 @@ cv_model_pls <- train(
   data = baked_train, 
   method = "pls",
   trControl = cv,
-  tuneLength = 30,
+  tuneLength = 35,
   metric = "RMSE"
 )
 # model with lowest RMSE
 cv_model_pls$bestTune
 ##    ncomp
-## 13   13
+## 17    17
 
 # results for model with lowest RMSE
 cv_model_pls$results %>%
   dplyr::filter(ncomp == pull(cv_model_pls$bestTune))
 ##   ncomp  RMSE    Rsquared  MAE     RMSESD 
-## 1   13 5.797741 0.7743082 3.501573 1.142346
+## 1   17 0.6703446 0.7040273 0.332997
 
 # plot cross-validated RMSE
 ggplot(cv_model_pls)
@@ -288,8 +288,7 @@ results
 library(Metrics)
 predictions <- predict(cv_knn_model, baked_test) 
 rmse(log(pumpkin_test$price), predictions)
-#the predicted RMSE on the testset is: 19.43 RMSE which is way higher than
-#the in-sample test. hmm....?
+# 0.36 RMSE test-error
 
 #Question n:####
 library(vip)
@@ -315,13 +314,13 @@ plot(residuals_train)
 
 df <- data.frame(actual = log(pumpkin_train$price), predicted = exp(predictions_train), residuals_train)
 df[which.max(df$residuals_train),] 
-pumpkin_train[1209,] 
+pumpkin_train[1174,] 
 #The above could be removed because it is an outlier and can be noisy regarding the analysis. The package is the type 'each' which means the 
 #package contains one pumpkin. In this category the pumpkins are often very low in price like 0.2 - 3 dollars. This observation are more than 100x
 #the usual price for a pumpkin in the 'each' category. Therefor, remove it!
 
 #Remove row 1182:
-pumpkin_train <- pumpkin_train[-(1209), ]
+pumpkin_train <- pumpkin_train[-(1174), ]
 
 library(gridExtra)   
 # 1. histogram, Q-Q plot, and boxplot
@@ -341,7 +340,7 @@ Tmax = mean+(3*std)
 
 # find outliers
 pumpkin_train$price[which(pumpkin_train$price < Tmin | pumpkin_train$price > Tmax)]
-# [1] 400 400 440 480 440 440
+# [1] 400 480 440 440
 
 # remove outliers
 pumpkin_train$price[which(pumpkin_train$price > Tmin & pumpkin_train$price < Tmax)]
@@ -349,8 +348,8 @@ pumpkin_train$price[which(pumpkin_train$price > Tmin & pumpkin_train$price < Tma
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors(), neighbors = 6) %>%
   step_log(all_outcomes()) %>%
-  step_other(Package, threshold = 0.1, other = "other") %>%
-  step_other(Origin, threshold = 0.1, other = "other") %>%
+  step_other(Package, threshold = 0.02, other = "other") %>%
+  step_other(Origin, threshold = 0.02, other = "other") %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
   step_integer(Item.Size) %>%
   #step_center(all_integer_predictors()) %>%
@@ -376,13 +375,13 @@ cv_knn_modified <- train(
 cv_knn_modified
 #New metrics: 
 #k   RMSE       Rsquared   MAE      
-#2  0.3865875  0.8925568  0.1355119
+#2  0.4006522  0.8895522  0.1386972
 
 #Old metrics:
 #k   RMSE       Rsquared   MAE      
 #2  0.4219436  0.8597167  0.1437527
 
 #When removing the outliers in training data we have a better model when estimating on the training data. Lets try on the test data:
-predictions <- predict(cv_knn_model, baked_test) 
+predictions <- predict(cv_knn_modified, baked_test) 
 rmse(log(pumpkin_test$price), predictions)
 

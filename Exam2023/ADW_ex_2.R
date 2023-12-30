@@ -55,16 +55,16 @@ AdjPrice=function(Price,Spread){
   mean_s=mean(pumpkin_data$Spread)
   median_ps/mean_s
 }
+
 aprice <- AdjPrice(pumpkin_data$Price, pumpkin_data$Spread)
 
 std_adj <- sqrt(sum((pumpkin_data$Price - aprice)^2) / (1473-1))
-se_pop <- std_adj/sqrt(1473)
+sd_pop <- std_adj/sqrt(1473)
 #It is not an accurate estimate without resampling as in a bootstrap. But we are able to
 #compute an estimate though, but the accuracy is questionable and we concluded before that
 #the distribution of spread and price are not normally distributed, which is a must for this type
 #of computation. That's why we can apply bootstrapping so we can make a normal distribution out of the
 #sample means. I dont think there is a formula for SD of a median value. This is why we can apply bootstrapping.
-
 
 #Question f:####
 library(boot)
@@ -74,8 +74,6 @@ AdjPrice.fn<-function(data, index){
   Spread<-data$Spread[index]
   median(Price*Spread)/mean(Spread)
 }
-
-AdjPrice.fn(pumpkin_data,1:1473)
 
 AdjPrice.fn(pumpkin_data, sample(1:1473, 1473, replace = TRUE))
 
@@ -91,11 +89,11 @@ plot(boot.out)
 #    original    bias    std. error
 #t1* 64.04122 0.7116221    2.772582
 
-#95% confidensinterval
+#95% confidence interval
 se_boot <- sd(boot.out$t)
 mu <- mean(boot.out$t0)
 
-c(mu - 2*se, mu + 2*se)
+c(mu - 2*se_boot, mu + 2*se_boot)
 
 #The point estimate of the adjusted price are 64.041 which is the same as the population i computed before. The standard error of the bootsrap
 #is 2.68 which is not very much when the mean is 64. The bootstrap statistics are very accurate and can predict the population parameter
@@ -111,7 +109,8 @@ pumpkin_data <- pumpkin_data %>%
   ungroup()
 
 plot_bar(pumpkin_data)
-  
+str(pumpkin_data)
+
 library(rsample)
 x <- model.matrix(Price~.,pumpkin_data)[, -1]
 y <- pumpkin_data$Price
@@ -134,7 +133,6 @@ ols.mse <- mean((lm.pred-y.test)^2)
 ols.mse
 
 #Predict with Ridge-reg with 5-fold cv:
-#install.packages("glmnet")
 library(caret)
 library(glmnet)
 set.seed(123)
@@ -149,7 +147,7 @@ plot(cv.ridge)
 #It seems like the full model does a good job
 bestlam.ridge <- cv.ridge$lambda.min
 bestlam.ridge
-#The lamda that results in the smallest CV-error is 6.45. Lets see what the RMSE is, associated with this lambda
+#The lambda that results in the smallest CV-error is 5.88. Lets see what the RMSE is, associated with this lambda
 
 ridge_pred <- predict(mod.ridge, newx = x[test, ], s=bestlam.ridge)
 (rmse_ridge = sqrt(apply((y.test-ridge_pred)^2,2,mean)))
@@ -169,6 +167,7 @@ plot(mod.lasso)
 cv.lasso <- cv.glmnet(x[train, ], y[train],
                       alpha = 1,
                       nfolds = n)
+plot(cv.lasso)
 
 bestlam.lasso<-cv.lasso$lambda.min
 coef(cv.lasso)
