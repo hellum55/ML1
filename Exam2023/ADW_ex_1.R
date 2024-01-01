@@ -159,8 +159,8 @@ pumpkin_test <- testing(split)
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors(), neighbors = 6) %>%
-  step_other(Package, threshold = 0.02, other = "other") %>%
-  step_other(Origin, threshold = 0.02, other = "other") %>%
+  step_other(Package, threshold = 0.05, other = "other") %>%
+  step_other(Origin, threshold = 0.05, other = "other") %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
   step_integer(Item.Size) %>%
   #step_center(all_integer_predictors()) %>%
@@ -183,7 +183,7 @@ cv <- trainControl(
   repeats = 1)
 
 cv_model_ols <- train(
-  (price)~.,      
+  price~.,      
   data = baked_train, 
   method = "lm", 
   trControl = cv, 
@@ -197,7 +197,7 @@ plot(cv_model_ols$finalModel)
 #PCR regression
 set.seed(123)
 cv_model_pcr <- train(
-  (price)~., 
+  price~., 
   data = baked_train, 
   method = "pcr",
   trControl = cv,

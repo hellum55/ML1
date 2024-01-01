@@ -138,7 +138,7 @@ library(glmnet)
 set.seed(123)
 mod.ridge <- glmnet(x[train, ], y[train], alpha = 0,
                     lambda = l.grid, tresh = 1e-12)
-plot(mod.ridge)
+plot(mod.ridge, xvar = "lambda")
 
 cv.ridge <- cv.glmnet(x=x[train, ], y=y[train],
                       alpha = 0,
@@ -162,14 +162,14 @@ n <- length(y[train])  #sample size
 set.seed(123)
 mod.lasso <- glmnet(x[train, ], y[train], alpha = 1,
                     lambda = l.grid, thresh = 1e-12)
-plot(mod.lasso)
+plot(mod.lasso, xvar = "lambda")
 
 cv.lasso <- cv.glmnet(x[train, ], y[train],
                       alpha = 1,
                       nfolds = n)
 plot(cv.lasso)
 
-bestlam.lasso<-cv.lasso$lambda.min
+(bestlam.lasso<-cv.lasso$lambda.min)
 coef(cv.lasso)
 #The best model with lasso takes around 14 parameters. So it is a simpler model than ridge but,
 #does not perform better than ridge, but slightly better than OLS.
