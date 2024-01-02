@@ -159,22 +159,27 @@ pumpkin_test <- testing(split)
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors(), neighbors = 6) %>%
+  step_BoxCox(all_outcomes()) %>%
   step_other(Package, threshold = 0.05, other = "other") %>%
   step_other(Origin, threshold = 0.05, other = "other") %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
   step_integer(Item.Size) %>%
   #step_center(all_integer_predictors()) %>%
   #step_scale(all_integer(), -all_outcomes()) %>%
-  step_dummy(all_nominal_predictors(), one_hot = T) %>%
+  step_dummy(all_nominal_predictors(), one_hot = F) %>%
   step_nzv(all_predictors(), -all_outcomes())
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
-prepare
+prepare$steps
 # bake: apply the recipe to new data (e.g., the training data or future test data) with bake()
 baked_train <- bake(prepare, new_data = pumpkin_train)
 baked_test <- bake(prepare, new_data = pumpkin_test)
 dim(baked_train)
 dim(baked_test)
+
+#Check which value of lambda has been used to BoxCox and use the same value when calculating test-error.
+price_BC <- BoxCox(pumpkin_train$price, lambda="auto")
+tidy(prepare, number = 2)
 
 #Question k:####
 cv <- trainControl(
@@ -183,8 +188,8 @@ cv <- trainControl(
   repeats = 1)
 
 cv_model_ols <- train(
-  price~.,      
-  data = baked_train, 
+  pumpkin_recipe,     
+  data = pumpkin_train, 
   method = "lm", 
   trControl = cv, 
   metric = "RMSE"
@@ -194,11 +199,21 @@ cv_model_ols
 # 44.35128  0.7401948  28.88014
 plot(cv_model_ols$finalModel)
 
+#old data (train)
+pred_train_OLS <- predict(cv_model_ols, pumpkin_train)
+train_RMSE_OLS = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.571) - pred_train_OLS)^2))
+train_RMSE_OLS
+
+# new data (test)
+predictions_OLS <- predict(cv_model_ols, pumpkin_test)
+test_RMSE_OLS = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.571) - predictions_OLS)^2))
+test_RMSE_OLS
+
 #PCR regression
 set.seed(123)
 cv_model_pcr <- train(
-  price~., 
-  data = baked_train, 
+  pumpkin_recipe, 
+  data = pumpkin_train, 
   method = "pcr",
   trControl = cv,
   tuneLength = 35,
@@ -213,7 +228,7 @@ cv_model_pcr$bestTune
 cv_model_pcr$results %>%
   dplyr::filter(ncomp == pull(cv_model_pcr$bestTune))
 ##   ncomp  RMSE  Rsquared   MAE   
-## 1  33 44.39553 0.7367208 28.92166
+## 1  30 45.02456 0.7291282 28.69138
 
 # plot cross-validated RMSE
 ggplot(cv_model_pcr)
@@ -223,12 +238,22 @@ summary(cv_model_pcr)
 #from the model with 5 components because it is a simpler model. It looks like it is just a single variable
 #that can explain the prices such as the package size. The bigger the packages the higher the price.
 
+#old data (train)
+pred_train_pcr <- predict(cv_model_pcr, pumpkin_train)
+train_RMSE_pcr = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.571) - pred_train_pcr)^2))
+train_RMSE_pcr
+
+# new data (test)
+predictions_pcr <- predict(cv_model_pcr, pumpkin_test)
+test_RMSE_pcr = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.571) - predictions_pcr)^2))
+test_RMSE_pcr
+
 #PLS regression
 # number of principal components to use as predictors from 1-30
 set.seed(123)
 cv_model_pls <- train(
-  (price)~., 
-  data = baked_train, 
+  pumpkin_recipe, 
+  data = pumpkin_train, 
   method = "pls",
   trControl = cv,
   tuneLength = 35,
@@ -237,13 +262,13 @@ cv_model_pls <- train(
 # model with lowest RMSE
 cv_model_pls$bestTune
 ##    ncomp
-## 17    17
+## 18    18
 
 # results for model with lowest RMSE
 cv_model_pls$results %>%
   dplyr::filter(ncomp == pull(cv_model_pls$bestTune))
 ##   ncomp  RMSE    Rsquared  MAE 
-## 1   17 44.39351 0.7367227 28.8711
+## 1   21 44.90029 0.7304141 28.65008
 
 # plot cross-validated RMSE
 ggplot(cv_model_pls)
@@ -251,13 +276,23 @@ ggplot(cv_model_pls)
 #model are more beneficial because the model are less complex and easier to interpret and computational faster. If the gain from a more complex model is this small.
 #Then pick the less complex model.
 
+#old data (train)
+pred_train_pls <- predict(cv_model_pls, pumpkin_train)
+train_RMSE_pls = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.571) - pred_train_pls)^2))
+train_RMSE_pls
+
+# new data (test)
+predictions_pls <- predict(cv_model_pls, pumpkin_test)
+test_RMSE_pls = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.571) - predictions_pls)^2))
+test_RMSE_pls
+
 #KNN-regression:
 # Construct grid of hyperparameter values
 set.seed(123)
 hyper_grid <- expand.grid(k = seq(2, 30, by = 1))
 cv_knn_model <- train(
-  price~.,      
-  data = baked_train, 
+  pumpkin_recipe,      
+  data = pumpkin_train, 
   method = "knn", 
   trControl = cv, 
   tuneGrid = hyper_grid,
@@ -269,6 +304,16 @@ cv_knn_model
 #model with k=2 as the best model and the problem might be overfitting the data. The bias is low, but variance might be high. Lets see:
 
 ggplot(cv_knn_model)
+
+#old data (train)
+pred_train_knn <- predict(cv_knn_model, pumpkin_train)
+train_RMSE_knn = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.571) - pred_train_knn)^2))
+train_RMSE_knn
+
+# new data (test)
+predictions_knn <- predict(cv_knn_model, pumpkin_test)
+test_RMSE_knn = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.571) - predictions_knn)^2))
+test_RMSE_knn
 
 # Question l:####_______________________________
 # Summary of cv-error for the models tested here
@@ -287,7 +332,6 @@ results
 library(Metrics)
 predictions <- predict(cv_knn_model, baked_test) 
 rmse(pumpkin_test$price, predictions)
-# 0.36 RMSE test-error
 
 #Question n:####
 library(vip)
@@ -307,7 +351,7 @@ vip::vip(cv_knn_model, method = "model")
 #First, let us look at the assumptions in general for the whole dataset. It looks like there might be some complications in the full dataset that leads to high variance
 #especially for the knn-model. Lets check outliers without any feature engineering:
 
-predictions_train <- predict(cv_knn_model, baked_train)
+predictions_train <- predict(cv_knn_model, pumpkin_train)
 residuals_train = pumpkin_train$price - predictions_train
 #residuals_train = log(pumpkin_train$price) - exp(predictions_train)
 plot(residuals_train)
@@ -315,13 +359,13 @@ plot(residuals_train)
 df <- data.frame(actual = pumpkin_train$price, predicted = predictions_train, residuals_train)
 #df <- data.frame(actual = log(pumpkin_train$price), predicted = exp(predictions_train), residuals_train)
 df[which.max(df$residuals_train),] 
-pumpkin_train[1174,] 
+pumpkin_train[1209,] 
 #The above could be removed because it is an outlier and can be noisy regarding the analysis. The package is the type 'each' which means the 
 #package contains one pumpkin. In this category the pumpkins are often very low in price like 0.2 - 3 dollars. This observation are more than 100x
 #the usual price for a pumpkin in the 'each' category. Therefor, remove it!
 
 #Remove row 1174:
-pumpkin_train <- pumpkin_train[-(1174), ]
+pumpkin_train <- pumpkin_train[-(1209), ]
 
 library(gridExtra)   
 # 1. histogram, Q-Q plot, and boxplot
@@ -348,13 +392,13 @@ pumpkin_train$price[which(pumpkin_train$price > Tmin & pumpkin_train$price < Tma
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors(), neighbors = 6) %>%
-  step_other(Package, threshold = 0.02, other = "other") %>%
-  step_other(Origin, threshold = 0.02, other = "other") %>%
+  step_other(Package, threshold = 0.05, other = "other") %>%
+  step_other(Origin, threshold = 0.05, other = "other") %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
   step_integer(Item.Size) %>%
   #step_center(all_integer_predictors()) %>%
   #step_scale(all_integer(), -all_outcomes()) %>%
-  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
+  step_dummy(all_nominal_predictors(), one_hot = F) %>%
   step_nzv(all_predictors(), -all_outcomes())
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
@@ -365,8 +409,8 @@ baked_test <- bake(prepare, new_data = pumpkin_test)
 
 set.seed(123)
 cv_knn_modified <- train(
-  (price)~.,      
-  data = baked_train, 
+  pumpkin_recipe,      
+  data = pumpkin_train, 
   method = "knn", 
   trControl = cv, 
   tuneGrid = hyper_grid,
@@ -375,13 +419,14 @@ cv_knn_modified <- train(
 cv_knn_modified
 #New metrics: 
 #k   RMSE       Rsquared   MAE      
-#2  36.42616  0.8239715  14.52783
+#2  36.88868  0.8166978  14.79469
 
 #Old metrics:
 #k   RMSE       Rsquared   MAE      
-#2  36.47115  0.8218209  14.50838
+#2  38.14343  0.8033895  15.56806
 
 #When removing the outliers in training data we have a better model when estimating on the training data. Lets try on the test data:
-predictions <- predict(cv_knn_modified, baked_test) 
-rmse(pumpkin_test$price, predictions)
+library(Metrics)
+predictions_knn_mod <- predict(cv_knn_modified, pumpkin_test) 
+rmse(pumpkin_test$price, predictions_knn_mod)
 

@@ -1,5 +1,6 @@
 #Question a:####
-pumpkin <- read.csv("~/ML1/Exam2023/US-pumpkins.csv", stringsAsFactors=TRUE)
+pumpkin <- read.csv("~/ML1/Exam2023/US-pumpkins.csv", stringsAsFactors=TRUE,
+                    na.strings = c("", " ", "NA", "N/A", ".", "NaN", "MISSING"))
 
 library(dplyr)
 pumpkin_data <- pumpkin %>%
@@ -80,9 +81,11 @@ AdjPrice.fn(pumpkin_data, sample(1:1473, 1473, replace = TRUE))
 boot.out=boot(data=pumpkin_data, statistic=AdjPrice.fn, R=1000)
 boot.out
 plot(boot.out)
-#The bootsrap is used to tell the uncertainty given an estimator or a method. For example a SE
+#The bootstrap is used to tell the uncertainty given an estimator or a method. For example a SE
 #of spread or a confidence interval for that. We simulate this process a 1000 times to estimate the SD
-#so we can compute SE. 
+#so we can compute SE. The SE is significantly lower than the STD from the population. When computing the SE
+#from the bootstrap you compute the STD from the 1000 bootstrap sample medians and that is what gives the
+#SE which is lower because it is uncertain that multiple outliers will appear in the same bootstrap sample
 
 #These are the results:
 
@@ -148,7 +151,6 @@ plot(cv.ridge)
 bestlam.ridge <- cv.ridge$lambda.min
 bestlam.ridge
 #The lambda that results in the smallest CV-error is 5.88. Lets see what the RMSE is, associated with this lambda
-
 ridge_pred <- predict(cv.ridge, newx = x[test, ], s=bestlam.ridge)
 (rmse_ridge = sqrt(apply((y.test-ridge_pred)^2,2,mean)))
 #Results in a RMSE of 53.53
