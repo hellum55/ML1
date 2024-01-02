@@ -135,11 +135,3 @@ pumpkin_data <- pumpkin_data %>%
 plot_bar(pumpkin_data)
 ggpairs(pumpkin_data[ ,8:10])
 str(pumpkin_data)
-
-
-
-
-
-
-
-
