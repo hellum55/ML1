@@ -127,8 +127,12 @@ count(pumpkin_data, Package) %>% arrange(n)
 #are observed less than 5% of the time for the package variable and the origin. 
 
 #Lets have a quick look at the assumptions:
+library(car)
 test_lm <- lm(price~ City.Name+Package+Variety+Origin+Item.Size+Color+month+year, data = pumpkin_data)
 summary(test_lm)
+hist(test_lm$residuals)
+vif.1 <- vif(test_lm)
+vif.1
 #Actually quite a good prediction model just with a regular MLP. R2 of .86 with a p-value very low and a F-statistic
 #that deviates from 0 significantly. 
 #Lets plot it:

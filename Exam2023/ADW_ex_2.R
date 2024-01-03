@@ -211,3 +211,70 @@ cor(lm.pred, lasso.pred)
 #only cut off 10(ish) variables which is not much. Therefor the gain is not huge compared to the two other models.
 #In the last part there is a sign of forward stepwise selection. First the intercept and then the best variables are connected to the model.
 #We can see that the model with only one variable performs worse than the two variable at the same time.
+
+#Best subset selection with AIC, BIC and R^2
+library(leaps)
+reg.full<-regsubsets(Price~.-Spread, nvmax = 30, data=pumpkin_data)
+summary(reg.full)
+names(summary(reg.full))
+plot(summary(reg.full)$cp, xlab="Number of Variables", ylab="Cp", type="l") #figure of Cp
+#minimize by Cp
+which.min(summary(reg.full)$cp) #at which p does Cp attain minimum? This produces p=10
+coef(reg.full, 22) #here we can find coefficients of the model.
+#minimize by BIC
+which.min(summary(reg.full)$bic)
+coef(reg.full, 12)
+
+##Forward Stepwise Selection
+reg.fwd<-regsubsets(Price~., nvmax=30, method="forward", data=pumpkin_data)
+summary(reg.fwd)
+#minimize by Cp
+which.min(summary(reg.fwd)$cp) #at which p does Cp attain minimum? This produces p=36
+plot(summary(reg.fwd)$cp, xlab="No of Variables", ylab="Cp", type="l") #figure of Cp
+#minimize by Cp
+coef(reg.fwd, 21) #here we can find coefficients of the model.
+#minimize by BIC
+which.min(summary(reg.fwd)$bic)
+coef(reg.fwd, 13)
+
+##Best Subset Selection with 10-fold Cross validation
+k<-10
+n<-nrow(pumpkin_data)
+set.seed(1)
+folds<-sample(rep(1:k, length=n)) #selects k fold
+cv.errors<-matrix(NA, k, 28) #readies kx19 matrix space for cv errors
+
+
+#Unfortunately regsubsets() does not have built-in predict function.
+#So we write one for us below. You may suppose this as given.
+
+predict.regsubsets<-function(object, newdata, id){
+  form<-as.formula(object$call[[2]])
+  mat<-model.matrix(form, newdata)
+  coefi<-coef(object, id=id)
+  xvars<-names(coefi)
+  mat[, xvars]%*%coefi
+}
+
+#This function calculates 10x30 cross validation errors, fold and variable wise.
+for(j in 1:k){
+  
+  reg<-regsubsets(Price~., data=pumpkin_data[folds!=j, ], nvmax=28)
+  
+  for(i in 1:28){
+    
+    pred<-predict.regsubsets(reg, newdata=pumpkin_data[folds==j, ], id=i)
+    
+    cv.errors[j,i] <-mean((pumpkin_data$Price[folds==j]-pred)^2)
+  }
+}
+#Now, we calculate average MSE across 10 folds
+mean.cv.errors<-apply(cv.errors, 2, mean)
+mean.cv.errors
+which.min(mean.cv.errors)
+
+plot(mean.cv.errors, type="b")  # we can also this graphically
+
+#We already estimated 10-variable model in Cp case. Below code leads to the same model coefficients.
+reg.cv<-regsubsets(Price~., nvmax=28, data=pumpkin_data)
+coef(reg.cv, 28)
