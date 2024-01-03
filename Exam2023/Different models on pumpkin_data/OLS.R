@@ -9,24 +9,53 @@ library(ggplot2)  # for awesome graphics
 # Modeling packages
 library(caret)    # for cross-validation, etc.
 
-# Model interpretability packages
-library(vip)      # variable importance
-pumpkin <- read.csv("~/ML1/Exam2023/pumpkintrain.csv", stringsAsFactors=TRUE,
-                    na.strings = c("", " ", "NA", "N/A", ".", "NaN", "MISSING"))
-pumpkin <- na.omit(pumpkin)
 
-# data
-set.seed(123)
-library(rsample)
-split <- initial_split(pumpkin, prop = 0.7, strata = "price")
-pumpkin_train  <- training(split)
-pumpkin_test   <- testing(split)
+pumpkin <- read.csv("~/ML1/Exam2023/US-pumpkins.csv", stringsAsFactors=TRUE,
+                    na.strings = c("", " ", "NA", "N/A", ".", "NaN", "MISSING"))
+
+library(dplyr)
+pumpkin_data <- pumpkin %>%
+  select(-c(X, X.1))
+
+
+library(tidyverse)
+pumpkin_data <- pumpkin_data %>%
+  mutate(Date = mdy(Date),
+         month = month(Date),
+         year = year(Date)) %>%
+  select(-Date)
+
+pumpkin_data$month <- as.factor(pumpkin_data$month)
+pumpkin_data$year <- as.factor(pumpkin_data$year)
+str(pumpkin_data)
+
+pumpkin_data <- pumpkin_data %>%
+  select(-c(Trans.Mode, Crop, Storage, Appearance, Condition, Quality, Environment, Grade, Sub.Variety, Unit.of.Sale, Origin.District, Type))
+
+#Question f:####
+# Create a new column for average Price
+pumpkin_data <- pumpkin_data %>% 
+  mutate(price = (Low.Price + High.Price)/2) %>%
+  select(-Low.Price, -High.Price, -Mostly.Low, -Mostly.High)
+
+##################################################################################
+pumpkins_recipe_test <-
+  recipe(price ~ ., data = pumpkin_data) %>%
+  step_integer(all_predictors(), zero_based = TRUE)
+# Prep the recipe
+pumpkins_prep <- prep(pumpkins_recipe_test)
+
+# Bake the recipe to extract a preprocessed new_pumpkins data
+baked_pumpkins <- bake(pumpkins_prep, new_data = NULL)
+
+pairs(baked_pumpkins)
+ggpairs(baked_pumpkins)
 
 # ___________________
 # Simple LR with OLS 
 # ___________________
 
-model1 <- lm(price ~ Package, data = pumpkin_train)
+model1 <- lm(price ~ Package, data = baked_pumpkins)
 plot(model1) 
 summary(model1)
 # interpret the beta as the mean selling price increases by approx 17.28 USD,
@@ -42,19 +71,18 @@ confint(model1, level = 0.95)
 # Multiple LR with OLS 
 # ____________________
 
-# Gr_Liv_Area and Year_Built as predictors
-model2 <- lm(price ~ City.Name + Package, data = pumpkin_train)
+model2 <- lm(price ~ City.Name + Package, data = baked_pumpkins)
 summary(model2)
 
 # Same model with interaction
-model2_wint <- lm(Sale_Price ~ Gr_Liv_Area + Year_Built + Gr_Liv_Area:Year_Built, data = ames_train)
+model2_wint <- lm(price ~ City.Name + Package + City.Name:Package, data = baked_pumpkins)
 summary(model2_wint)
 
 # Model incl. all predictors
 pumpkin <- pumpkin %>%
   select(-Repack)
 plot_bar(pumpkin)
-model3 <- lm(price ~ ., data = pumpkin_train) 
+model3 <- lm(price ~ ., data = baked_pumpkins) 
 # print estimated coefficients in a tidy data frame
 summary(model3)  
 

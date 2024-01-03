@@ -173,7 +173,6 @@ plot(cv.lasso)
 
 (bestlam.lasso<-cv.lasso$lambda.min)
 coef(cv.lasso)
-cv.lasso$index
 #The best model with lasso takes around 14 parameters. So it is a simpler model than ridge but,
 #does not perform better than ridge, but slightly better than OLS.
 
@@ -227,8 +226,9 @@ which.min(summary(reg.full)$bic)
 coef(reg.full, 12)
 
 ##Forward Stepwise Selection
-reg.fwd<-regsubsets(Price~.-Spread, nvmax=30, method="forward", data=pumpkin_data[train,])
+reg.fwd<-regsubsets(Price~.-Spread, nvmax=40, method="forward", data=pumpkin_data[train,])
 summary(reg.fwd)
+plot(reg.fwd, scale = "Cp")
 #minimize by Cp
 which.min(summary(reg.fwd)$cp) #at which p does Cp attain minimum? This produces p=36
 plot(summary(reg.fwd)$cp, xlab="No of Variables", ylab="Cp", type="l") #figure of Cp
@@ -237,6 +237,23 @@ coef(reg.fwd, 21) #here we can find coefficients of the model.
 #minimize by BIC
 which.min(summary(reg.fwd)$bic)
 coef(reg.fwd, 13)
+
+#Additional and just for fun:
+# loop through models of each size and compute test RMSE for each model
+# (clever approach from ISLR page 248)
+fwd.errors <- rep(NA, 29)
+val.mat <- model.matrix(Price~.-Spread, data = pumpkin_data[test,])
+for (i in 1:29) {
+  # extract the coefficients from the best model of that size
+  coefi <- coef(reg.fwd, id = i)
+  # multiply them into the appropriate columns of the test model matrix to
+  # predict
+  pred <- val.mat[, names(coefi)] %*% coefi
+  # compute the test MSE
+  fwd.errors[i] <- mean((y.test - pred)^2)
+}
+which.min(fwd.errors)
+plot(fwd.errors,ylab="MSE", pch=19, type = "b")
 
 ##Best Subset Selection with 10-fold Cross validation
 library(leaps)

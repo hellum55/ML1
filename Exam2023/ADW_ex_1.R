@@ -110,10 +110,7 @@ library (GGally)
 #This is a weird question. We have been told to delete almost all numeric features until now.
 #and the only numeric features such as month and year are treated as factors now. So which numeric features are in play?
 #Actually not a single when besides the DP.
-
-str(pumpkin_data)
-pairs(pumpkin_data[,c(4:7, 12:14)])
-ggpairs(pumpkin_data, columns = c(4:7, 12:14))
+#Maybe if we convert the factors into integer we can interpret:
 
 #Question i:
 plot_bar(pumpkin_data)
