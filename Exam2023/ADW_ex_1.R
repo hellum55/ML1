@@ -153,15 +153,15 @@ library(recipes)  # for feature engineering tasks
 library(rsample)
 
 set.seed(123)
-split <- initial_split(pumpkin_data_test, prop = 0.7, strata = "price") 
+split <- initial_split(pumpkin_data_test, prop = 0.6, strata = "price") 
 pumpkin_train <- training(split)
 pumpkin_test <- testing(split)
 
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors(), neighbors = 6) %>%
   step_BoxCox(all_outcomes()) %>%
-  step_other(Package, threshold = 0.05, other = "other") %>%
-  step_other(Origin, threshold = 0.05, other = "other") %>%
+  step_other(Package, threshold = 0.1, other = "other") %>%
+  step_other(Origin, threshold = 0.1, other = "other") %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
   step_integer(Item.Size) %>%
   #step_center(all_integer_predictors()) %>%
@@ -201,12 +201,12 @@ plot(cv_model_ols$finalModel)
 
 #old data (train)
 pred_train_OLS <- predict(cv_model_ols, pumpkin_train)
-train_RMSE_OLS = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.571) - pred_train_OLS)^2))
+train_RMSE_OLS = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.583) - pred_train_OLS)^2))
 train_RMSE_OLS
 
 # new data (test)
 predictions_OLS <- predict(cv_model_ols, pumpkin_test)
-test_RMSE_OLS = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.571) - predictions_OLS)^2))
+test_RMSE_OLS = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.583) - predictions_OLS)^2))
 test_RMSE_OLS
 
 #PCR regression
@@ -240,12 +240,12 @@ summary(cv_model_pcr)
 
 #old data (train)
 pred_train_pcr <- predict(cv_model_pcr, pumpkin_train)
-train_RMSE_pcr = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.571) - pred_train_pcr)^2))
+train_RMSE_pcr = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.583) - pred_train_pcr)^2))
 train_RMSE_pcr
 
 # new data (test)
 predictions_pcr <- predict(cv_model_pcr, pumpkin_test)
-test_RMSE_pcr = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.571) - predictions_pcr)^2))
+test_RMSE_pcr = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.583) - predictions_pcr)^2))
 test_RMSE_pcr
 
 #PLS regression
@@ -278,12 +278,12 @@ ggplot(cv_model_pls)
 
 #old data (train)
 pred_train_pls <- predict(cv_model_pls, pumpkin_train)
-train_RMSE_pls = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.571) - pred_train_pls)^2))
+train_RMSE_pls = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.583) - pred_train_pls)^2))
 train_RMSE_pls
 
 # new data (test)
 predictions_pls <- predict(cv_model_pls, pumpkin_test)
-test_RMSE_pls = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.571) - predictions_pls)^2))
+test_RMSE_pls = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.583) - predictions_pls)^2))
 test_RMSE_pls
 
 #KNN-regression:
@@ -307,12 +307,12 @@ ggplot(cv_knn_model)
 
 #old data (train)
 pred_train_knn <- predict(cv_knn_model, pumpkin_train)
-train_RMSE_knn = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.571) - pred_train_knn)^2))
+train_RMSE_knn = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.583) - pred_train_knn)^2))
 train_RMSE_knn
 
 # new data (test)
 predictions_knn <- predict(cv_knn_model, pumpkin_test)
-test_RMSE_knn = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.571) - predictions_knn)^2))
+test_RMSE_knn = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.583) - predictions_knn)^2))
 test_RMSE_knn
 
 # Question l:####_______________________________
@@ -359,13 +359,13 @@ plot(residuals_train)
 df <- data.frame(actual = pumpkin_train$price, predicted = predictions_train, residuals_train)
 #df <- data.frame(actual = log(pumpkin_train$price), predicted = exp(predictions_train), residuals_train)
 df[which.max(df$residuals_train),] 
-pumpkin_train[1209,] 
+pumpkin_train[1041,] 
 #The above could be removed because it is an outlier and can be noisy regarding the analysis. The package is the type 'each' which means the 
 #package contains one pumpkin. In this category the pumpkins are often very low in price like 0.2 - 3 dollars. This observation are more than 100x
 #the usual price for a pumpkin in the 'each' category. Therefor, remove it!
 
 #Remove row 1174:
-pumpkin_train <- pumpkin_train[-(1209), ]
+pumpkin_train <- pumpkin_train[-(1041), ]
 
 library(gridExtra)   
 # 1. histogram, Q-Q plot, and boxplot
@@ -390,10 +390,11 @@ pumpkin_train$price[which(pumpkin_train$price < Tmin | pumpkin_train$price > Tma
 # remove outliers
 pumpkin_train$price[which(pumpkin_train$price > Tmin & pumpkin_train$price < Tmax)]
 
-pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
+pumpkin_recipe_mod <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors(), neighbors = 6) %>%
-  step_other(Package, threshold = 0.05, other = "other") %>%
-  step_other(Origin, threshold = 0.05, other = "other") %>%
+  step_BoxCox(all_outcomes()) %>%
+  step_other(Package, threshold = 0.1, other = "other") %>%
+  step_other(Origin, threshold = 0.1, other = "other") %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
   step_integer(Item.Size) %>%
   #step_center(all_integer_predictors()) %>%
@@ -401,7 +402,7 @@ pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_dummy(all_nominal_predictors(), one_hot = F) %>%
   step_nzv(all_predictors(), -all_outcomes())
 
-prepare <- prep(pumpkin_recipe, training = pumpkin_train)
+prepare <- prep(pumpkin_recipe_mod, training = pumpkin_train)
 prepare
 # bake: apply the recipe to new data (e.g., the training data or future test data) with bake()
 baked_train <- bake(prepare, new_data = pumpkin_train)
@@ -419,14 +420,19 @@ cv_knn_modified <- train(
 cv_knn_modified
 #New metrics: 
 #k   RMSE       Rsquared   MAE      
-#2  36.88868  0.8166978  14.79469
+#2  4.628097  0.8737094  2.000032
 
 #Old metrics:
 #k   RMSE       Rsquared   MAE      
-#2  38.14343  0.8033895  15.56806
+#2  4.969688  0.8441041  2.091872
 
 #When removing the outliers in training data we have a better model when estimating on the training data. Lets try on the test data:
-library(Metrics)
-predictions_knn_mod <- predict(cv_knn_modified, pumpkin_test) 
-rmse(pumpkin_test$price, predictions_knn_mod)
+#old data (train)
+pred_mod_knn <- predict(cv_knn_modified, pumpkin_train)
+mod_RMSE_knn = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.583) - pred_mod_knn)^2))
+mod_RMSE_knn
 
+# new data (test)
+predictions_knn <- predict(cv_knn_modified, pumpkin_test)
+test_RMSE_knn = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.583) - predictions_knn)^2))
+test_RMSE_knn
