@@ -130,11 +130,13 @@ count(pumpkin_data, Package) %>% arrange(n)
 library(car)
 test_lm <- lm(price~ City.Name+Package+Variety+Origin+Item.Size+Color+month+year, data = pumpkin_data)
 summary(test_lm)
-hist(test_lm$residuals)
-vif.1 <- vif(test_lm)
-vif.1
 #Actually quite a good prediction model just with a regular MLP. R2 of .86 with a p-value very low and a F-statistic
-#that deviates from 0 significantly. 
+#that deviates from 0 significantly.
+hist(test_lm$residuals)
+plot(predict(test_lm), rstudent(test_lm))
+which.max(rstudent(test_lm))
+#There are some possible outliers in this plot because a couple of the plots that are higher
+#than 3. Much higher actually.
 #Lets plot it:
 par(mfrow=c(2,2))
 plot(test_lm)    
@@ -157,7 +159,7 @@ library(recipes)  # for feature engineering tasks
 library(rsample)
 
 set.seed(123)
-split <- initial_split(pumpkin_data_test, prop = 0.7, strata = "price") 
+split <- initial_split(pumpkin_data, prop = 0.6, strata = "price") 
 pumpkin_train <- training(split)
 pumpkin_test <- testing(split)
 
@@ -192,15 +194,15 @@ cv <- trainControl(
   repeats = 1)
 
 cv_model_ols <- train(
-  pumpkin_recipe,     
-  data = pumpkin_train, 
+  price~.,     
+  data = baked_train, 
   method = "lm", 
   trControl = cv, 
   metric = "RMSE"
 )
 cv_model_ols
 #  RMSE      Rsquared   MAE    
-# 44.35128  0.7401948  28.88014
+# 5.627801  0.7958899  3.361066
 plot(cv_model_ols$finalModel)
 
 #old data (train)
@@ -211,6 +213,11 @@ train_RMSE_OLS
 # new data (test)
 predictions_OLS <- predict(cv_model_ols, pumpkin_test)
 test_RMSE_OLS = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.571) - predictions_OLS)^2))
+test_RMSE_OLS
+
+# new data (test)
+predictions_OLS <- predict(cv_model_ols, baked_test)
+test_RMSE_OLS = sqrt(mean((baked_test$price - predictions_OLS)^2))
 test_RMSE_OLS
 
 #PCR regression
@@ -433,4 +440,3 @@ cv_knn_modified
 library(Metrics)
 predictions_knn_mod <- predict(cv_knn_modified, pumpkin_test) 
 rmse(pumpkin_test$price, predictions_knn_mod)
-

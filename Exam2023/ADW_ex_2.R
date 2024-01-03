@@ -168,11 +168,12 @@ plot(mod.lasso, xvar = "lambda")
 
 cv.lasso <- cv.glmnet(x[train, ], y[train],
                       alpha = 1,
-                      nfolds = n)
+                      nfolds = n, lambda = l.grid, type.measure = "mse")
 plot(cv.lasso)
 
 (bestlam.lasso<-cv.lasso$lambda.min)
 coef(cv.lasso)
+cv.lasso$index
 #The best model with lasso takes around 14 parameters. So it is a simpler model than ridge but,
 #does not perform better than ridge, but slightly better than OLS.
 
@@ -226,7 +227,7 @@ which.min(summary(reg.full)$bic)
 coef(reg.full, 12)
 
 ##Forward Stepwise Selection
-reg.fwd<-regsubsets(Price~., nvmax=30, method="forward", data=pumpkin_data)
+reg.fwd<-regsubsets(Price~.-Spread, nvmax=30, method="forward", data=pumpkin_data[train,])
 summary(reg.fwd)
 #minimize by Cp
 which.min(summary(reg.fwd)$cp) #at which p does Cp attain minimum? This produces p=36
@@ -238,16 +239,32 @@ which.min(summary(reg.fwd)$bic)
 coef(reg.fwd, 13)
 
 ##Best Subset Selection with 10-fold Cross validation
-k<-10
-n<-nrow(pumpkin_data)
-set.seed(1)
-folds<-sample(rep(1:k, length=n)) #selects k fold
-cv.errors<-matrix(NA, k, 28) #readies kx19 matrix space for cv errors
+library(leaps)
+predict.regsubsets = function(object, newdata, id, ...) {
+  form = as.formula(object$call[[2]])
+  mat = model.matrix(form, newdata)
+  coefi = coef(object, id = id)
+  mat[, names(coefi)] %*% coefi
+}
 
+k = 10
+p = 25 #ncol(pumpkin_data) - 1
+folds = sample(rep(1:k, length = nrow(pumpkin_data)))
+cv.errors = matrix(NA, k, p)
+for (i in 1:k) {
+  best.fit = regsubsets(Price ~ .-Spread, data = pumpkin_data[folds != i, ], nvmax = p)
+  for (j in 1:p) {
+    pred = predict(best.fit, pumpkin_data[folds == i, ], id = j)
+    cv.errors[i, j] = mean((pumpkin_data$Price[folds == i] - pred)^2)
+  }
+}
+mse.cv = (apply(cv.errors, 2, mean))
+mse.cv[which.min(mse.cv)]
+plot(mse.cv, pch = 25, type = "b")
+which.min(mse.cv)
 
 #Unfortunately regsubsets() does not have built-in predict function.
 #So we write one for us below. You may suppose this as given.
-
 predict.regsubsets<-function(object, newdata, id){
   form<-as.formula(object$call[[2]])
   mat<-model.matrix(form, newdata)
@@ -256,25 +273,15 @@ predict.regsubsets<-function(object, newdata, id){
   mat[, xvars]%*%coefi
 }
 
-#This function calculates 10x30 cross validation errors, fold and variable wise.
-for(j in 1:k){
-  
-  reg<-regsubsets(Price~., data=pumpkin_data[folds!=j, ], nvmax=28)
-  
-  for(i in 1:28){
-    
-    pred<-predict.regsubsets(reg, newdata=pumpkin_data[folds==j, ], id=i)
-    
-    cv.errors[j,i] <-mean((pumpkin_data$Price[folds==j]-pred)^2)
-  }
+#Predictions with regsubsets:
+val.errors <- rep(NA, 30)
+x.test <- model.matrix(Price~.-Spread, data = pumpkin_data[test, ])
+for(i in 1:30){
+  coefi=coef(reg.fwd, id=1)
+  pred=x.test[,names(coefi)]%*%coefi
+  val.errors[i]=mean((y.test-pred)^2)
 }
-#Now, we calculate average MSE across 10 folds
-mean.cv.errors<-apply(cv.errors, 2, mean)
-mean.cv.errors
-which.min(mean.cv.errors)
+val.errors
 
-plot(mean.cv.errors, type="b")  # we can also this graphically
-
-#We already estimated 10-variable model in Cp case. Below code leads to the same model coefficients.
-reg.cv<-regsubsets(Price~., nvmax=28, data=pumpkin_data)
-coef(reg.cv, 28)
+plot(sqrt(val.errors),ylab="Root MSE", ylim=c(6000,7000), pch=19, type = "b")
+points(sqrt(reg.fwd$rss[-1]/100),col="blue",pch=19,type="b")
