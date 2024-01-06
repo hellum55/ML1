@@ -75,6 +75,10 @@ no_transform <- pumpkin_data$price
 #Log transformation:
 log_pumpkin <- log(pumpkin_data$price)
 
+#yeojohnson
+library(car)
+transformed_response_YJ <- yjPower(pumpkin_data$price, lambda = 0.5)
+
 # Box-Cox transformation (lambda=0 is equivalent to log(x))
 library(forecast)
 pumpkin_BC <- forecast::BoxCox(pumpkin_data$price, lambda="auto") 

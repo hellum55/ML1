@@ -28,30 +28,25 @@ pumpkin_data <- pumpkin_data %>%
   filter(n() / nrow(.) >= 0.01) %>%
   ungroup()
 
-#Question 2:####
-##Best Subset Selection
-library(leaps)
-reg.full<-regsubsets(Price~., nvmax = 20, data=pumpkin_data)
-summary(reg.full)
-names(summary(reg.full))
-plot(summary(reg.full)$cp, xlab="No of Variables", ylab="Cp", type="l") #figure of Cp
-#minimize by Cp
-which.min(summary(reg.full)$cp) #at which p does Cp attain minimum? This produces p=10
-coef(reg.full, 21) #here we can find coefficients of the model.
-#minimize by BIC
-which.min(summary(reg.full)$bic)
-coef(reg.full, 11)
+library(rsample)
+x <- model.matrix(Price~.,pumpkin_data)[, -1]
+y <- pumpkin_data$Price
 
-#Question 3:####
-##Forward Stepwise Selection
-reg.fwd<-regsubsets(Price~., nvmax=43, method="forward", data=pumpkin_data)
-summary(reg.fwd)
-#minimize by Cp
-which.min(summary(reg.fwd)$cp) #at which p does Cp attain minimum? This produces p=10
-coef(reg.full, 21) #here we can find coefficients of the model.
-#minimize by BIC
-which.min(summary(reg.fwd)$bic)
-coef(reg.full, 14)
+#decreasing lambda grid from 1000 to 0.01
+l.grid <- 10^seq(10, -2, length = 100)
+
+set.seed (185)
+train <- sample(1:nrow(x), nrow(x) * 0.7) 
+test <- (-train)
+y.test <- y[test]
+
+library(glmnet)
+library(leaps)
+library(caret)
+l12.model <- cv.glmnet(x=x[train, ], y=y[train], alpha=0.5, nfolds = 10, lambda = l.grid)
+l12.lam = l12.model$lambda.min
+l12.model.pred <- predict(l12.model, s=l12.lam, newx = x[test, ])
+mse <- mean((y.test - l12.model.pred)^2)
 
 
 
