@@ -125,8 +125,12 @@ count(pumpkin_data, Package) %>% arrange(n)
 
 #Lets have a quick look at the assumptions:
 library(car)
+library(performance)
+library(easystats)
+library(see)
 test_lm <- lm(price~ City.Name+Package+Variety+Origin+Item.Size+Color+month+year, data = pumpkin_data)
 summary(test_lm)
+check_model(test_lm)
 #Actually quite a good prediction model just with a regular MLP. R2 of .86 with a p-value very low and a F-statistic
 #that deviates from 0 significantly.
 hist(test_lm$residuals)
@@ -156,11 +160,9 @@ library(recipes)  # for feature engineering tasks
 library(rsample)
 
 set.seed(123)
-<<<<<<< HEAD
-split <- initial_split(pumpkin_data_test, prop = 0.6, strata = "price") 
-=======
 split <- initial_split(pumpkin_data, prop = 0.6, strata = "price") 
->>>>>>> b9f05639933de474516ed715343a61288362c864
+split <- initial_split(pumpkin_data, prop = 0.6, strata = "price") 
+
 pumpkin_train <- training(split)
 pumpkin_test <- testing(split)
 
@@ -173,7 +175,7 @@ pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_integer(Item.Size) %>%
   #step_center(all_integer_predictors()) %>%
   #step_scale(all_integer(), -all_outcomes()) %>%
-  step_dummy(all_nominal_predictors(), one_hot = F) %>%
+  #step_dummy(all_nominal_predictors(), one_hot = F) %>%
   step_nzv(all_predictors(), -all_outcomes())
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
@@ -183,7 +185,10 @@ baked_train <- bake(prepare, new_data = pumpkin_train)
 baked_test <- bake(prepare, new_data = pumpkin_test)
 dim(baked_train)
 dim(baked_test)
-
+baked_lm <- lm(price ~ ., data = baked_train)
+check_model(baked_lm)
+check_normality(baked_lm)
+check_outliers(baked_lm)
 #Check which value of lambda has been used to BoxCox and use the same value when calculating test-error.
 price_BC <- BoxCox(pumpkin_train$price, lambda="auto")
 tidy(prepare, number = 2)
