@@ -108,7 +108,7 @@ c(mu - 2*se_boot, mu + 2*se_boot)
 library(DataExplorer)
 pumpkin_data <- pumpkin_data %>%
   group_by(year, month, City.Name) %>%
-  filter(n() / nrow(.) >= 0.01) %>%
+  filter(n() / nrow(.) >= 0.005) %>%
   ungroup()
 
 plot_bar(pumpkin_data)
@@ -129,10 +129,11 @@ pumpkin_test <- pumpkin_data[test, ]
 
 #Question h:####
 #First we will predict price using OLS:
+library(Metrics)
 reg.lm<-lm(Price~., pumpkin_data[train, ])
 lm.pred <- predict(reg.lm, newdata = pumpkin_data[test,])
 lm.pred
-ols.mse <- mean((lm.pred-y.test)^2)
+ols.mse <- mse(lm.pred, y.test)
 ols.mse
 
 #Predict with Ridge-reg with 5-fold cv:
@@ -140,7 +141,7 @@ library(caret)
 library(glmnet)
 set.seed(123)
 mod.ridge <- glmnet(x[train, ], y[train], alpha = 0,
-                    lambda = l.grid, tresh = 1e-12)
+                  tresh = 1e-12)
 plot(mod.ridge, xvar = "lambda")
 
 cv.ridge <- cv.glmnet(x=x[train, ], y=y[train],
@@ -150,11 +151,12 @@ plot(cv.ridge)
 #It seems like the full model does a good job
 bestlam.ridge <- cv.ridge$lambda.min
 bestlam.ridge
+
 #The lambda that results in the smallest CV-error is 5.88. Lets see what the RMSE is, associated with this lambda
 ridge_pred <- predict(cv.ridge, newx = x[test, ], s=bestlam.ridge)
-(rmse_ridge = sqrt(apply((y.test-ridge_pred)^2,2,mean)))
+ridge_rmse <- rmse(y.test, ridge_pred)
 #Results in a RMSE of 53.53
-ridge_mse <- mean((ridge_pred - y.test)^2)
+ridge_mse <- mse(ridge_pred, y.test)
 ridge_mse
 
 #predict with lasso (LOOCV):
@@ -163,12 +165,12 @@ ridge_mse
 n <- length(y[train])  #sample size
 set.seed(123)
 mod.lasso <- glmnet(x[train, ], y[train], alpha = 1,
-                    lambda = l.grid, thresh = 1e-12)
+                     thresh = 1e-12)
 plot(mod.lasso, xvar = "lambda")
 
 cv.lasso <- cv.glmnet(x[train, ], y[train],
                       alpha = 1,
-                      nfolds = n, lambda = l.grid, type.measure = "mse")
+                      nfolds = n, type.measure = "mse")
 plot(cv.lasso)
 
 (bestlam.lasso<-cv.lasso$lambda.min)
@@ -178,8 +180,8 @@ coef(cv.lasso)
 
 lasso.pred <- predict(cv.lasso, s = bestlam.lasso, newx = x[test, ])
 
-(rmse = sqrt(apply((y.test-lasso.pred)^2,2,mean)))
-lasso_mse <- mean((lasso.pred - y.test)^2)
+rmse(y.test, lasso.pred)
+lasso_mse <- mse(lasso.pred, y.test)
 lasso_mse
 
 #Question i:####

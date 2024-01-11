@@ -66,7 +66,7 @@ pumpkin_data <- pumpkin_data %>%
 
 #Check for appropriate normalization:
 #First checking for the distribution of price without any transformation:
-par(mfrow=c(1,3))
+par(mfrow=c(1,4))
 hist(pumpkin_data$price, breaks = 20, col = "red", border = "red") 
 no_transform <- pumpkin_data$price
 #Highly skewed distribution with almost 400 observations with a price of almost 0 (0.24 as the lowest price). That
@@ -89,10 +89,15 @@ hist(log_pumpkin, breaks = 20,
 hist(pumpkin_BC, breaks = 20, 
      col = "lightblue", border = "lightblue", 
      ylim = c(0, 800))
+hist(transformed_response_YJ, breaks = 20, 
+     col = "black", border = "black", 
+     ylim = c(0, 800))
+
 
 list(summary(no_transform),
 summary(log_pumpkin),
-summary(pumpkin_BC))
+summary(pumpkin_BC),
+summary(transformed_response_YJ))
 
 #It is hard to tell which of these normalizations are better, because they are all terrible. 
 #Maybe the log transformation are better. The box-cox transformation seems to be the most normalized distribution. The range of the prices are not as
@@ -116,6 +121,19 @@ library (GGally)
 #Actually not a single when besides the DP.
 #Maybe if we convert the factors into integer we can interpret:
 
+#scatterplot   
+pairs(pumpkin_data) 
+# alternartively: 
+plot(pumpkin_data$price, pumpkin_data$Origin) # Heavier cars correlates with lower mpg.
+
+# (b) corr matrix
+str(pumpkin_data)
+library(corrplot)
+cm <- cor(pumpkin_data[, c(8,9,10)], use = "complete.obs")
+cm
+corrplot(cm)
+corrplot(cm, type="upper", tl.pos="d", method="number", diag=TRUE)
+
 #Question i:
 plot_bar(pumpkin_data)
 count(pumpkin_data, Origin) %>% arrange(n)
@@ -132,7 +150,7 @@ library(car)
 library(performance)
 library(easystats)
 library(see)
-test_lm <- lm(price~ City.Name+Package+Variety+Origin+Item.Size+Color+month+year, data = pumpkin_data)
+test_lm <- lm(price ~ City.Name+Package+Variety+Item.Size, data = pumpkin_data)
 summary(test_lm)
 check_model(test_lm)
 #Actually quite a good prediction model just with a regular MLP. R2 of .86 with a p-value very low and a F-statistic
@@ -162,24 +180,33 @@ pumpkin_data_test <- pumpkin_data_test[-(1095), ]
 library(caret)    # for various ML tasks
 library(recipes)  # for feature engineering tasks
 library(rsample)
+library(ggridges)
 
 set.seed(123)
-split <- initial_split(pumpkin_data, prop = 0.6, strata = "price") 
-split <- initial_split(pumpkin_data, prop = 0.6, strata = "price") 
+split <- initial_split(pumpkin_data, prop = 0.7, strata = "price") 
 
 pumpkin_train <- training(split)
 pumpkin_test <- testing(split)
 
+ggplot()+
+  geom_density(data = pumpkin_data, aes(price))+
+  geom_density(data = pumpkin_train, aes(price),
+              color = "green")+
+  geom_density(data = pumpkin_test, aes(price),
+              color = "red")
+  
+  
+
 pumpkin_recipe <- recipe(price ~ ., data = pumpkin_train) %>%
   step_impute_knn(all_predictors(), neighbors = 6) %>%
   step_BoxCox(all_outcomes()) %>%
-  step_other(Package, threshold = 0.1, other = "other") %>%
-  step_other(Origin, threshold = 0.1, other = "other") %>%
+  step_other(Package, threshold = 0.01, other = "other") %>%
+  step_other(Origin, threshold = 0.01, other = "other") %>%
   step_mutate(Item.Size = ordered(Item.Size, levels = c('sml', 'med', 'med-lge', 'lge', 'xlge', 'jbo', 'exjbo'))) %>%
   step_integer(Item.Size) %>%
   #step_center(all_integer_predictors()) %>%
   #step_scale(all_integer(), -all_outcomes()) %>%
-  #step_dummy(all_nominal_predictors(), one_hot = F) %>%
+  step_dummy(all_nominal_predictors(), one_hot = F) %>%
   step_nzv(all_predictors(), -all_outcomes())
 
 prepare <- prep(pumpkin_recipe, training = pumpkin_train)
@@ -189,6 +216,7 @@ baked_train <- bake(prepare, new_data = pumpkin_train)
 baked_test <- bake(prepare, new_data = pumpkin_test)
 dim(baked_train)
 dim(baked_test)
+
 baked_lm <- lm(price ~ ., data = baked_train)
 check_model(baked_lm)
 check_normality(baked_lm)
@@ -197,7 +225,9 @@ check_outliers(baked_lm)
 price_BC <- BoxCox(pumpkin_train$price, lambda="auto")
 tidy(prepare, number = 2)
 
+library(Metrics)
 #Question k:####
+set.seed(175)
 cv <- trainControl(
   method = "repeatedcv", 
   number = 10, 
@@ -213,22 +243,22 @@ cv_model_ols <- train(
 cv_model_ols
 #  RMSE      Rsquared   MAE    
 # 5.627801  0.7958899  3.361066
+par(mfrow=c(2,2))
 plot(cv_model_ols$finalModel)
 
 #old data (train)
 pred_train_OLS <- predict(cv_model_ols, pumpkin_train)
-train_RMSE_OLS = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.583) - pred_train_OLS)^2))
-train_RMSE_OLS
+pred_train_OLS <- predict(cv_model_ols, baked_train)
+
+rmse(BoxCox(pumpkin_train$price, lambda=0.596), pred_train_OLS)
+rmse(pumpkin_train$price, pred_train_OLS)
 
 # new data (test)
-predictions_OLS <- predict(cv_model_ols, pumpkin_test)
-test_RMSE_OLS = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.583) - predictions_OLS)^2))
-test_RMSE_OLS
+pred_test_OLS <- predict(cv_model_ols, pumpkin_test)
+pred_test_OLS <- predict(cv_model_ols, baked_test)
 
-# new data (test)
-predictions_OLS <- predict(cv_model_ols, baked_test)
-test_RMSE_OLS = sqrt(mean((baked_test$price - predictions_OLS)^2))
-test_RMSE_OLS
+rmse(BoxCox(pumpkin_test$price, lambda=0.596), pred_test_OLS)
+rmse(pumpkin_test$price, pred_test_OLS)
 
 #PCR regression
 set.seed(123)
@@ -243,13 +273,13 @@ cv_model_pcr <- train(
 # model with lowest RMSE
 cv_model_pcr$bestTune
 ##    ncomp
-## 33   33
+## 24   24
 
 # results for model with lowest RMSE
 cv_model_pcr$results %>%
   dplyr::filter(ncomp == pull(cv_model_pcr$bestTune))
 ##   ncomp  RMSE  Rsquared   MAE   
-## 1  30 45.02456 0.7291282 28.69138
+## 1  24 6.924846 0.7344514 4.177773
 
 # plot cross-validated RMSE
 ggplot(cv_model_pcr)
@@ -261,13 +291,11 @@ summary(cv_model_pcr)
 
 #old data (train)
 pred_train_pcr <- predict(cv_model_pcr, pumpkin_train)
-train_RMSE_pcr = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.583) - pred_train_pcr)^2))
-train_RMSE_pcr
+rmse(BoxCox(pumpkin_train$price, lambda=0.596), pred_train_pcr)
 
 # new data (test)
 predictions_pcr <- predict(cv_model_pcr, pumpkin_test)
-test_RMSE_pcr = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.583) - predictions_pcr)^2))
-test_RMSE_pcr
+rmse(BoxCox(pumpkin_test$price, lambda=0.596), predictions_pcr)
 
 #PLS regression
 # number of principal components to use as predictors from 1-30
@@ -283,13 +311,13 @@ cv_model_pls <- train(
 # model with lowest RMSE
 cv_model_pls$bestTune
 ##    ncomp
-## 18    18
+## 14   14
 
 # results for model with lowest RMSE
 cv_model_pls$results %>%
   dplyr::filter(ncomp == pull(cv_model_pls$bestTune))
 ##   ncomp  RMSE    Rsquared  MAE 
-## 1   21 44.90029 0.7304141 28.65008
+## 1   14 6.916573 0.7351669 4.131997
 
 # plot cross-validated RMSE
 ggplot(cv_model_pls)
@@ -299,13 +327,11 @@ ggplot(cv_model_pls)
 
 #old data (train)
 pred_train_pls <- predict(cv_model_pls, pumpkin_train)
-train_RMSE_pls = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.583) - pred_train_pls)^2))
-train_RMSE_pls
+rmse(BoxCox(pumpkin_train$price, lambda=0.596), pred_train_pls)
 
 # new data (test)
-predictions_pls <- predict(cv_model_pls, pumpkin_test)
-test_RMSE_pls = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.583) - predictions_pls)^2))
-test_RMSE_pls
+pred_test_pls <- predict(cv_model_pls, pumpkin_test)
+rmse(BoxCox(pumpkin_test$price, lambda=0.596), pred_test_pls)
 
 #KNN-regression:
 # Construct grid of hyperparameter values
@@ -328,13 +354,11 @@ ggplot(cv_knn_model)
 
 #old data (train)
 pred_train_knn <- predict(cv_knn_model, pumpkin_train)
-train_RMSE_knn = sqrt(mean((BoxCox(pumpkin_train$price, lambda=0.583) - pred_train_knn)^2))
-train_RMSE_knn
+rmse(BoxCox(pumpkin_train$price, lambda=0.596), pred_train_knn)
 
 # new data (test)
-predictions_knn <- predict(cv_knn_model, pumpkin_test)
-test_RMSE_knn = sqrt(mean((BoxCox(pumpkin_test$price, lambda=0.583) - predictions_knn)^2))
-test_RMSE_knn
+pred_test_knn <- predict(cv_knn_model, pumpkin_test)
+rmse(BoxCox(pumpkin_test$price, lambda=0.596), pred_test_knn)
 
 # Question l:####_______________________________
 # Summary of cv-error for the models tested here
@@ -373,14 +397,16 @@ vip::vip(cv_knn_model, method = "model")
 #especially for the knn-model. Lets check outliers without any feature engineering:
 
 predictions_train <- predict(cv_knn_model, pumpkin_train)
-residuals_train = pumpkin_train$price - predictions_train
+inverse <- (cv_knn_model$^(0.596-1))/0.596
+
+residuals_train = BoxCox(pumpkin_train$price, lambda = 0.596) - predictions_train
 #residuals_train = log(pumpkin_train$price) - exp(predictions_train)
 plot(residuals_train)
 
 df <- data.frame(actual = pumpkin_train$price, predicted = predictions_train, residuals_train)
 #df <- data.frame(actual = log(pumpkin_train$price), predicted = exp(predictions_train), residuals_train)
 df[which.max(df$residuals_train),] 
-pumpkin_train[1041,] 
+pumpkin_train[1001,] 
 #The above could be removed because it is an outlier and can be noisy regarding the analysis. The package is the type 'each' which means the 
 #package contains one pumpkin. In this category the pumpkins are often very low in price like 0.2 - 3 dollars. This observation are more than 100x
 #the usual price for a pumpkin in the 'each' category. Therefor, remove it!
