@@ -140,20 +140,19 @@ ols.mse
 library(caret)
 library(glmnet)
 set.seed(123)
-mod.ridge <- glmnet(x[train, ], y[train], alpha = 0,
+cv.ridge <- cv.glmnet(x=x[train, ], y=y[train],
+                      alpha = 0, lambda = l.grid, nfolds = 5)
+bestlam.ridge <- cv.ridge$lambda.min
+bestlam.ridge
+plot(cv.ridge)
+#It seems like the full model does a good job
+
+mod.ridge <- glmnet(x[train, ], y[train], alpha = 0, lambda = l.grid,
                   tresh = 1e-12)
 plot(mod.ridge, xvar = "lambda")
 
-cv.ridge <- cv.glmnet(x=x[train, ], y=y[train],
-                      alpha = 0,
-                      nfolds = 5)
-plot(cv.ridge)
-#It seems like the full model does a good job
-bestlam.ridge <- cv.ridge$lambda.min
-bestlam.ridge
-
 #The lambda that results in the smallest CV-error is 5.88. Lets see what the RMSE is, associated with this lambda
-ridge_pred <- predict(cv.ridge, newx = x[test, ], s=bestlam.ridge)
+ridge_pred <- predict(mod.ridge, newx = x[test, ], type = "response", s = bestlam.ridge)
 ridge_rmse <- rmse(y.test, ridge_pred)
 #Results in a RMSE of 53.53
 ridge_mse <- mse(ridge_pred, y.test)
@@ -164,21 +163,23 @@ ridge_mse
 #LOOCV using cv.glmnet
 n <- length(y[train])  #sample size
 set.seed(123)
-mod.lasso <- glmnet(x[train, ], y[train], alpha = 1,
+cv.lasso <- cv.glmnet(x[train, ], y[train],
+                      alpha = 1, lambda = l.grid,
+                      nfolds = n)
+plot(cv.lasso)
+bestlam.lasso<-cv.lasso$lambda.min
+
+mod.lasso <- glmnet(x[train, ], y[train], alpha = 1, lambda = l.grid,
                      thresh = 1e-12)
 plot(mod.lasso, xvar = "lambda")
 
 cv.lasso <- cv.glmnet(x[train, ], y[train],
-                      alpha = 1,
+                      alpha = 1, lambda = l.grid,
                       nfolds = n, type.measure = "mse")
-plot(cv.lasso)
-
-(bestlam.lasso<-cv.lasso$lambda.min)
-coef(cv.lasso)
 #The best model with lasso takes around 14 parameters. So it is a simpler model than ridge but,
 #does not perform better than ridge, but slightly better than OLS.
 
-lasso.pred <- predict(cv.lasso, s = bestlam.lasso, newx = x[test, ])
+lasso.pred <- predict(mod.lasso, s = bestlam.lasso, newx = x[test, ])
 
 rmse(y.test, lasso.pred)
 lasso_mse <- mse(lasso.pred, y.test)
